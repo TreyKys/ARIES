@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, CandlestickSeries } from 'lightweight-charts';
 import { Terminal } from 'lucide-react';
 
 export default function Dashboard({ data, supabase }) {
@@ -41,7 +41,7 @@ export default function Dashboard({ data, supabase }) {
       timeScale: { timeVisible: true, secondsVisible: false },
     });
 
-    const candlestickSeries = chart.addCandlestickSeries({
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
       wickUpColor: '#10b981', wickDownColor: '#ef4444',
     });
