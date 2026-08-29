@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .card {
+    @apply bg-card rounded-lg border border-border overflow-hidden;
+  }
+  .label {
+    @apply text-xs font-bold text-fg-muted tracking-wider uppercase;
+  }
+  .badge {
+    @apply px-2 py-0.5 rounded text-xs font-bold bg-muted border border-border;
+  }
+  .badge-green {
+    @apply bg-[rgba(16,185,129,0.1)] text-green border-[rgba(16,185,129,0.2)];
+  }
+  .badge-red {
+    @apply bg-[rgba(239,68,68,0.1)] text-red border-[rgba(239,68,68,0.2)];
+  }
+  .badge-amber {
+    @apply bg-[rgba(245,158,11,0.1)] text-amber border-[rgba(245,158,11,0.2)];
+  }
+  .badge-blue {
+    @apply bg-[rgba(59,130,246,0.1)] text-primary border-[rgba(59,130,246,0.2)];
+  }
+}
