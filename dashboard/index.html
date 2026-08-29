@@ -1048,7 +1048,15 @@ function bindCalc() {
 // ─────────────── INIT ───────────────
 
     const savedIp = localStorage.getItem('ares_engine_ip') || 'localhost';
-    const WS_URL = `ws://${savedIp}:8080/ws`;
+    
+    // Determine if we need secure websocket and what port
+    let WS_URL;
+    if (savedIp.includes('pinggy') || savedIp.includes('ngrok') || savedIp.includes('cloudflare')) {
+        WS_URL = `wss://${savedIp}/ws`;
+    } else {
+        WS_URL = `ws://${savedIp}:8080/ws`;
+    }
+
     let socket;
     
     function connectWebSocket() {
