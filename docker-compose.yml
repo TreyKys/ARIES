@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  ares1-engine:
+    build: .
+    container_name: ares1-engine
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ares-data:/app/data_store
+    network_mode: host
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ares-data:

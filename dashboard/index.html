@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARES-1 // Quantitative Trading Terminal</title>
+    <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+    <style>
+        :root {
+            --bg-deep: #06060b;
+            --bg-base: #0b0b14;
+            --bg-card: #10101c;
+            --bg-card-hover: #161625;
+            --bg-elevated: #1a1a2e;
+            --fg: #e2e8f0;
+            --fg-muted: #64748b;
+            --fg-dim: #475569;
+            --border-base: #1e1e32;
+            --border-subtle: #161625;
+            --accent: #3b82f6;
+            --accent-dim: rgba(59,130,246,0.15);
+            --green: #10b981;
+            --green-dim: rgba(16,185,129,0.15);
+            --red: #ef4444;
+            --red-dim: rgba(239,68,68,0.15);
+            --amber: #f59e0b;
+            --amber-dim: rgba(245,158,11,0.15);
+            --cyan: #06b6d4;
+            --purple: #a855f7;
+            --purple-dim: rgba(168,85,247,0.15);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg-deep); color: var(--fg); font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; overflow: hidden; height: 100vh; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-base); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); }
+
+        .card { background: var(--bg-card); border: 1px solid var(--border-base); border-radius: 10px; }
+        .card:hover { border-color: #252540; }
+        .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-muted); font-weight: 600; }
+        .mono { font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', monospace; }
+
+        .tab-panel { display: none; height: 100%; overflow-y: auto; }
+        .tab-panel.active { display: flex; flex-direction: column; animation: slideUp 0.25s ease-out; }
+
+        .nav-btn { position: relative; padding: 12px 0; font-size: 13px; font-weight: 500; color: var(--fg-muted); cursor: pointer; transition: color 0.2s; border: none; background: none; }
+        .nav-btn:hover { color: var(--fg); }
+        .nav-btn.active { color: var(--accent); }
+        .nav-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); border-radius: 2px 2px 0 0; }
+
+        @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes ripple { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(3); opacity: 0; } }
+
+        .pulse-dot { width: 7px; height: 7px; background: var(--green); border-radius: 50%; position: relative; }
+        .pulse-dot::after { content: ''; position: absolute; inset: 0; background: var(--green); border-radius: 50%; animation: ripple 2s ease-out infinite; }
+
+        .badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .badge-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+        .badge-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+        .badge-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+        .badge-blue { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(59,130,246,0.3); }
+        .badge-purple { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(168,85,247,0.3); }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 8px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); font-weight: 600; border-bottom: 1px solid var(--border-base); }
+        td { padding: 8px 12px; font-size: 12px; border-bottom: 1px solid var(--border-subtle); }
+        tbody tr { transition: background 0.15s; cursor: pointer; }
+        tbody tr:hover { background: var(--bg-card-hover); }
+
+        .toggle { position: relative; width: 36px; height: 20px; background: var(--border-base); border-radius: 10px; cursor: pointer; transition: background 0.2s; }
+        .toggle.on { background: var(--accent); }
+        .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: var(--fg); border-radius: 50%; transition: transform 0.2s; }
+        .toggle.on::after { transform: translateX(16px); }
+
+        input[type="number"], input[type="text"] { background: var(--bg-deep); border: 1px solid var(--border-base); color: var(--fg); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: 'JetBrains Mono', monospace; outline: none; transition: border-color 0.2s; width: 100%; }
+        input:focus { border-color: var(--accent); }
+
+        .signal-glow { box-shadow: 0 0 30px rgba(16,185,129,0.08), inset 0 1px 0 rgba(16,185,129,0.1); }
+        .signal-glow-red { box-shadow: 0 0 30px rgba(239,68,68,0.08), inset 0 1px 0 rgba(239,68,68,0.1); }
+
+        .heatmap-cell { width: 100%; aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; transition: transform 0.15s; }
+        .heatmap-cell:hover { transform: scale(1.15); z-index: 2; }
+
+        .metric-ring { transform: rotate(-90deg); }
+        .metric-ring circle { fill: none; stroke-linecap: round; transition: stroke-dashoffset 1s ease-out; }
+    </style>
+</head>
+<body class="flex flex-col">
+
+<!-- ═══════════════════ HEADER ═══════════════════ -->
+<header class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border-base)] bg-[var(--bg-base)] shrink-0 z-20">
+    <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5z" fill="url(#g1)"/><path d="M2 17l10 5 10-5" stroke="url(#g1)" stroke-width="1.5" fill="none"/><path d="M2 12l10 5 10-5" stroke="url(#g1)" stroke-width="1.5" fill="none"/><defs><linearGradient id="g1" x1="2" y1="2" x2="22" y2="22"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#10b981"/></linearGradient></defs></svg>
+            <span class="font-bold text-base tracking-widest bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">ARES-1</span>
+            <span class="text-[10px] text-[var(--fg-dim)] font-medium tracking-wider ml-1 mt-0.5">TERMINAL v1.4.2</span>
+        </div>
+        <div class="flex items-center gap-2 px-2.5 py-1 rounded-md bg-[var(--bg-deep)] border border-[var(--border-base)]">
+            <div class="pulse-dot"></div>
+            <span class="text-[10px] font-semibold text-[var(--green)] tracking-wider uppercase">System Armed</span>
+        </div>
+    </div>
+    <div class="flex items-center gap-6">
+        <div class="text-right">
+            <div class="label">Balance</div>
+            <div class="mono font-bold text-base" id="hdr-bal">$50.00</div>
+        </div>
+        <div class="h-6 w-px bg-[var(--border-base)]"></div>
+        <div class="text-right">
+            <div class="label">Today P&L</div>
+            <div class="mono font-bold text-base text-[var(--green)]" id="hdr-pnl">+$1.85</div>
+        </div>
+        <div class="h-6 w-px bg-[var(--border-base)]"></div>
+        <div class="text-right">
+            <div class="label">Win Rate</div>
+            <div class="mono font-bold text-base" id="hdr-wr">63.0%</div>
+        </div>
+        <div class="h-6 w-px bg-[var(--border-base)]"></div>
+        <div class="text-right mono text-xs text-[var(--fg-muted)]">
+            <div id="utc-clock">00:00:00 UTC</div>
+            <div id="session-label" class="text-[var(--accent)] font-semibold">LONDON</div>
+        </div>
+    </div>
+</header>
+
+<!-- ═══════════════════ NAV ═══════════════════ -->
+<nav class="flex gap-7 px-5 border-b border-[var(--border-base)] bg-[var(--bg-base)] shrink-0">
+    <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="nav-btn" data-tab="mtf">MTF Analysis</button>
+    <button class="nav-btn" data-tab="signals">Trade Signals</button>
+    <button class="nav-btn" data-tab="journal">Trade Journal</button>
+    <button class="nav-btn" data-tab="analytics">Analytics</button>
+    <button class="nav-btn" data-tab="settings">Settings</button>
+</nav>
+
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<main class="flex-1 overflow-hidden p-4" id="main-area">
+
+<!-- ──────── TAB: DASHBOARD ──────── -->
+<div id="tab-dashboard" class="tab-panel active gap-3">
+    <!-- Stats Row -->
+    <div class="grid grid-cols-6 gap-3 shrink-0">
+        <div class="card p-3"><div class="label mb-1">Account Balance</div><div class="mono text-xl font-bold" id="d-balance">$50.00</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Starting: $50.00</div></div>
+        <div class="card p-3"><div class="label mb-1">Today's P&L</div><div class="mono text-xl font-bold text-[var(--green)]" id="d-pnl">+$1.85</div><div class="text-[10px] text-[var(--green)] mt-0.5">+3.70%</div></div>
+        <div class="card p-3"><div class="label mb-1">Win Rate</div><div class="mono text-xl font-bold">63.0%</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">29W / 17L</div></div>
+        <div class="card p-3"><div class="label mb-1">Total Trades</div><div class="mono text-xl font-bold">46</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Last 30 days</div></div>
+        <div class="card p-3"><div class="label mb-1">Drawdown</div><div class="mono text-xl font-bold text-[var(--amber)]">-1.2%</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Max: -3.8%</div></div>
+        <div class="card p-3 relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-[rgba(16,185,129,0.06)] to-transparent"></div>
+            <div class="relative"><div class="label mb-1">Risk Status</div>
+            <div class="flex items-center gap-2 mt-1"><span class="badge badge-green">● GREEN</span></div>
+            <div class="text-[10px] text-[var(--fg-muted)] mt-1">Normal sizing 1.5%</div></div>
+        </div>
+    </div>
+
+    <!-- Main Grid: Equity + Signal + Risk -->
+    <div class="flex-1 grid grid-cols-12 gap-3 min-h-0">
+        <!-- Equity Chart -->
+        <div class="card col-span-8 flex flex-col p-4 min-h-0">
+            <div class="flex justify-between items-center mb-3 shrink-0">
+                <h2 class="label">Equity Curve — 30 Days</h2>
+                <div class="flex gap-2">
+                    <span class="mono text-xs px-2 py-0.5 rounded bg-[var(--bg-deep)] border border-[var(--border-base)] text-[var(--green)]">+$12.45 (+24.9%)</span>
+                </div>
+            </div>
+            <div class="flex-1 relative min-h-0"><canvas id="c-equity" class="absolute inset-0 w-full h-full"></canvas></div>
+        </div>
+
+        <!-- Right Column: Active Signal + Risk -->
+        <div class="col-span-4 flex flex-col gap-3 min-h-0">
+            <!-- Active Signal -->
+            <div class="card p-4 signal-glow relative overflow-hidden flex-1">
+                <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--green)] to-transparent opacity-40"></div>
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <div class="label mb-1">Active Signal</div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-lg">BTC/USDT</span>
+                            <span class="badge badge-green">LONG</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="label">Confidence</div>
+                        <div class="mono text-xl font-bold text-[var(--accent)]">0.88</div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-2 mb-3 text-xs">
+                    <div><span class="text-[var(--fg-muted)]">Entry </span><span class="mono font-semibold">64,350.00</span></div>
+                    <div><span class="text-[var(--fg-muted)]">Stop Loss </span><span class="mono font-semibold text-[var(--red)]">64,180.00</span></div>
+                    <div><span class="text-[var(--fg-muted)]">TP1 </span><span class="mono font-semibold text-[var(--green)]">64,860.00</span></div>
+                    <div><span class="text-[var(--fg-muted)]">TP2 </span><span class="mono font-semibold text-[var(--green)]">65,550.00</span></div>
+                    <div><span class="text-[var(--fg-muted)]">Size </span><span class="mono font-semibold">0.005 BTC</span></div>
+                    <div><span class="text-[var(--fg-muted)]">Leverage </span><span class="mono font-semibold">5x Isolated</span></div>
+                </div>
+                <!-- R:R Bar -->
+                <div class="mb-3">
+                    <div class="flex justify-between text-[10px] text-[var(--fg-muted)] mb-1"><span>SL: -$0.85 (1R)</span><span>TP2: +$2.55 (3R)</span></div>
+                    <div class="h-1.5 rounded-full flex overflow-hidden bg-[var(--bg-deep)]">
+                        <div class="bg-[var(--red)] rounded-l-full" style="width:25%"></div>
+                        <div class="bg-[var(--green)] rounded-r-full" style="width:75%"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] mt-1"><span class="text-[var(--red)] mono">-$0.85</span><span class="text-[var(--fg-muted)] mono">R:R 1:3.06</span><span class="text-[var(--green)] mono">+$2.55</span></div>
+                </div>
+                <div class="flex justify-between items-center pt-2 border-t border-[var(--border-base)] text-xs">
+                    <div class="flex items-center gap-2"><span class="badge badge-blue">Trend Follow</span><span class="badge badge-green">NY Session</span></div>
+                    <div class="text-[var(--fg-muted)]">Scan <span class="mono text-[var(--fg)]" id="scan-cd">04:59</span></div>
+                </div>
+            </div>
+
+            <!-- Risk Gauges -->
+            <div class="card p-4">
+                <div class="label mb-3">Risk Management</div>
+                <div class="flex justify-around mb-3">
+                    <div class="flex flex-col items-center">
+                        <svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" stroke="var(--border-base)" stroke-width="5" fill="none" class="metric-ring"/><circle cx="36" cy="36" r="30" stroke="var(--green)" stroke-width="5" fill="none" class="metric-ring" stroke-dasharray="188.5" id="ring-daily" stroke-dashoffset="131.9"/></svg>
+                        <div class="mono text-sm font-bold -mt-11 mb-6">1.2%</div>
+                        <div class="text-[9px] text-[var(--fg-muted)] text-center uppercase">Daily DD<br>Max 4%</div>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" stroke="var(--border-base)" stroke-width="5" fill="none" class="metric-ring"/><circle cx="36" cy="36" r="30" stroke="var(--amber)" stroke-width="5" fill="none" class="metric-ring" stroke-dasharray="188.5" id="ring-total" stroke-dashoffset="141.4"/></svg>
+                        <div class="mono text-sm font-bold -mt-11 mb-6">2.5%</div>
+                        <div class="text-[9px] text-[var(--fg-muted)] text-center uppercase">Total DD<br>Max 10%</div>
+                    </div>
+                </div>
+                <div class="space-y-2 text-xs">
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">Consecutive Losses</span><span class="mono badge badge-green">0</span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">Risk / Trade</span><span class="mono text-[var(--green)]">1.5% ($0.75)</span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">Adaptive Mode</span><span class="text-[var(--green)]">Normal</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Timeline -->
+    <div class="card p-2.5 shrink-0">
+        <div class="flex items-center gap-3">
+            <span class="label w-14 shrink-0">Sessions</span>
+            <div class="flex-1 h-7 bg-[var(--bg-deep)] rounded-md border border-[var(--border-base)] flex relative overflow-hidden">
+                <div class="flex-1 flex items-center justify-center text-[10px] text-[var(--fg-dim)] border-r border-[var(--border-base)]">TOKYO 00:00–09:00</div>
+                <div class="flex-1 flex items-center justify-center text-[10px] font-bold text-[var(--accent)] bg-[rgba(59,130,246,0.08)] border-r border-[var(--border-base)]">LONDON 07:00–16:00</div>
+                <div class="flex-1 flex items-center justify-center text-[10px] text-[var(--fg-dim)]">NEW YORK 12:00–21:00</div>
+                <div id="session-needle" class="absolute top-0 bottom-0 w-0.5 bg-[var(--amber)] z-10 transition-all duration-1000" style="left:45%;box-shadow:0 0 8px rgba(245,158,11,0.6)"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ──────── TAB: MTF ANALYSIS ──────── -->
+<div id="tab-mtf" class="tab-panel gap-3">
+    <!-- Three MTF Panels -->
+    <div class="grid grid-cols-3 gap-3 shrink-0" style="height:45%">
+        <div class="card p-5 flex flex-col">
+            <div class="flex justify-between items-center mb-4"><h2 class="label">Macro — 1D / 4H</h2><span class="badge badge-green">Bullish</span></div>
+            <div class="flex-1 flex flex-col justify-center items-center gap-3">
+                <div class="text-5xl">📈</div>
+                <div class="text-lg font-bold text-[var(--green)]">BULLISH EXPANSION</div>
+                <div class="text-xs text-[var(--fg-muted)] text-center leading-relaxed max-w-xs">Price above 200 EMA on 4H. Macro HH/HL structure intact. BSL resting at $66,500.</div>
+            </div>
+            <div class="border-t border-[var(--border-base)] pt-3 mt-3 space-y-1 text-xs">
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">Key OB</span><span class="mono">$63,800 – $64,150</span></div>
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">BSL Target</span><span class="mono text-[var(--green)]">$66,500</span></div>
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">SSL Pool</span><span class="mono text-[var(--red)]">$62,800</span></div>
+            </div>
+        </div>
+        <div class="card p-5 flex flex-col">
+            <div class="flex justify-between items-center mb-4"><h2 class="label">Structure — 1H / 15m</h2><span class="badge badge-green">Bullish</span></div>
+            <div class="flex-1 flex flex-col justify-center items-center gap-3">
+                <div class="text-5xl">🔄</div>
+                <div class="text-lg font-bold text-[var(--green)]">DISCOUNT RETRACE</div>
+                <div class="text-xs text-[var(--fg-muted)] text-center leading-relaxed max-w-xs">15m retracement into OTE zone (0.618–0.705). Unmitigated Bullish FVG at $64,250–$64,400.</div>
+            </div>
+            <div class="border-t border-[var(--border-base)] pt-3 mt-3 space-y-1 text-xs">
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">FVG Zone</span><span class="mono">$64,250 – $64,400</span></div>
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">Fib 0.618</span><span class="mono">$64,320</span></div>
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">MSS Level</span><span class="mono text-[var(--accent)]">$64,410</span></div>
+            </div>
+        </div>
+        <div class="card p-5 flex flex-col relative overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-50"></div>
+            <div class="flex justify-between items-center mb-4"><h2 class="label">Execution — 5m / 1m</h2><span class="badge badge-blue">Trigger</span></div>
+            <div class="flex-1 flex flex-col justify-center items-center gap-3">
+                <div class="text-5xl">⚡</div>
+                <div class="text-lg font-bold text-[var(--accent)]">ENTRY CONFIRMED</div>
+                <div class="text-xs text-[var(--fg-muted)] text-center leading-relaxed max-w-xs">SSL swept at $64,280. 5m displacement candle closed above $64,410. CVD confirmed absorption.</div>
+            </div>
+            <div class="border-t border-[var(--border-base)] pt-3 mt-3 space-y-1 text-xs">
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">Sweep Low</span><span class="mono text-[var(--red)]">$64,280</span></div>
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">CHoCH</span><span class="mono text-[var(--green)]">$64,410 ✓</span></div>
+                <div class="flex justify-between"><span class="text-[var(--fg-muted)]">CVD Delta</span><span class="mono text-[var(--green)]">+Positive</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Row: SMC Checklist + Fib + Confluence -->
+    <div class="flex-1 grid grid-cols-12 gap-3 min-h-0">
+        <!-- SMC Checklist -->
+        <div class="card col-span-4 p-5 overflow-y-auto">
+            <h2 class="label mb-4">Smart Money Concepts Checklist</h2>
+            <div class="space-y-3" id="smc-list">
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">Liquidity Sweep (SSL)</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">Break of Structure (BOS)</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">Change of Character (CHoCH)</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">Unmitigated Order Block</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">Fair Value Gap (FVG)</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">Discount Zone Entry</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--green-dim)]"><span class="text-[var(--green)] font-bold text-sm">✓</span><span class="text-sm">CVD Confirmation</span></div>
+                <div class="flex items-center gap-3 p-2 rounded-lg bg-[var(--red-dim)]"><span class="text-[var(--red)] font-bold text-sm">✗</span><span class="text-sm text-[var(--fg-muted)]">Volume Profile POC Alignment</span></div>
+            </div>
+        </div>
+
+        <!-- Fibonacci Zones -->
+        <div class="card col-span-4 p-5 flex flex-col">
+            <h2 class="label mb-4">Premium / Discount Zones</h2>
+            <div class="flex-1 flex gap-4 items-stretch">
+                <!-- Fib Bar -->
+                <div class="w-16 rounded-lg overflow-hidden flex flex-col border border-[var(--border-base)] relative shrink-0">
+                    <div class="flex-1 bg-gradient-to-b from-[rgba(239,68,68,0.2)] to-[rgba(239,68,68,0.05)] flex items-center justify-center"><span class="text-[9px] font-bold text-[var(--red)] -rotate-90 whitespace-nowrap">PREMIUM</span></div>
+                    <div class="h-px bg-[var(--fg-muted)]"></div>
+                    <div class="flex-1 bg-gradient-to-b from-[rgba(16,185,129,0.05)] to-[rgba(16,185,129,0.2)] flex items-center justify-center"><span class="text-[9px] font-bold text-[var(--green)] -rotate-90 whitespace-nowrap">DISCOUNT</span></div>
+                    <!-- Price marker -->
+                    <div class="absolute left-0 right-0 flex items-center" style="top:68%">
+                        <div class="h-0.5 flex-1 bg-[var(--accent)]"></div>
+                        <div class="absolute -right-1 w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-[var(--accent)]"></div>
+                    </div>
+                </div>
+                <!-- Fib Levels -->
+                <div class="flex-1 flex flex-col justify-between text-xs py-1">
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">0.000</span><span class="mono text-[var(--red)]">$65,400</span><span class="text-[9px] text-[var(--fg-dim)]">Swing High</span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">0.236</span><span class="mono">$65,050</span><span class="text-[9px] text-[var(--fg-dim)]"></span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">0.382</span><span class="mono">$64,780</span><span class="text-[9px] text-[var(--fg-dim)]"></span></div>
+                    <div class="flex justify-between border-y border-dashed border-[var(--fg-dim)] py-1"><span class="text-[var(--fg-muted)] font-bold">0.500</span><span class="mono font-bold">$64,570</span><span class="text-[9px] text-[var(--fg-muted)]">Equilibrium</span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)] font-bold">0.618</span><span class="mono font-bold text-[var(--accent)]">$64,320</span><span class="text-[9px] text-[var(--accent)]">OTE ◄ PRICE</span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">0.786</span><span class="mono">$64,060</span><span class="text-[9px] text-[var(--fg-dim)]"></span></div>
+                    <div class="flex justify-between"><span class="text-[var(--fg-muted)]">1.000</span><span class="mono text-[var(--green)]">$63,740</span><span class="text-[9px] text-[var(--fg-dim)]">Swing Low</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confluence Gauge -->
+        <div class="card col-span-4 p-5 flex flex-col items-center justify-center">
+            <h2 class="label mb-4 self-start">Structural Confluence</h2>
+            <div class="relative" style="width:160px;height:160px">
+                <svg viewBox="0 0 160 160" class="w-full h-full">
+                    <circle cx="80" cy="80" r="68" stroke="var(--border-base)" stroke-width="8" fill="none" class="metric-ring"/>
+                    <circle cx="80" cy="80" r="68" stroke="var(--green)" stroke-width="8" fill="none" class="metric-ring" stroke-dasharray="427.3" stroke-dashoffset="51.3" stroke-linecap="round"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <span class="mono text-4xl font-bold text-[var(--green)]" style="text-shadow:0 0 20px rgba(16,185,129,0.3)">88%</span>
+                    <span class="text-[10px] text-[var(--fg-muted)] uppercase mt-1">Aligned</span>
+                </div>
+            </div>
+            <div class="mt-4 text-center text-xs text-[var(--fg-muted)]">7 of 8 SMC conditions met.<br>Threshold: 80% minimum.</div>
+            <div class="badge badge-green mt-2">TRADE APPROVED</div>
+        </div>
+    </div>
+</div>
+
+<!-- ──────── TAB: TRADE SIGNALS ──────── -->
+<div id="tab-signals" class="tab-panel gap-3">
+    <div class="flex-1 grid grid-cols-12 gap-3 min-h-0">
+        <!-- JSON Output -->
+        <div class="card col-span-5 flex flex-col overflow-hidden">
+            <div class="px-4 py-2.5 border-b border-[var(--border-base)] flex justify-between items-center shrink-0">
+                <h2 class="label">ARES-1 Engine Output</h2>
+                <div class="flex items-center gap-2"><div class="pulse-dot" style="width:5px;height:5px"></div><span class="text-[9px] text-[var(--green)]">LIVE</span></div>
+            </div>
+            <pre class="flex-1 overflow-auto p-4 mono text-xs leading-relaxed text-[var(--cyan)]" id="json-output"></pre>
+        </div>
+
+        <!-- Right: Calculator + Signal History -->
+        <div class="col-span-7 flex flex-col gap-3 min-h-0">
+            <!-- Position Calculator -->
+            <div class="card p-4 shrink-0">
+                <h2 class="label mb-3">Position Size Calculator</h2>
+                <div class="grid grid-cols-4 gap-3 mb-3">
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Balance ($)</label><input type="number" id="calc-bal" value="50" step="0.01"></div>
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Risk (%)</label><input type="number" id="calc-risk" value="1.5" step="0.1"></div>
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Entry Price</label><input type="number" id="calc-entry" value="64350" step="0.01"></div>
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Stop Loss</label><input type="number" id="calc-sl" value="64180" step="0.01"></div>
+                </div>
+                <div class="grid grid-cols-4 gap-3 mb-3">
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Take Profit</label><input type="number" id="calc-tp" value="64860" step="0.01"></div>
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Leverage</label><input type="number" id="calc-lev" value="5" step="1"></div>
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Maker Fee (%)</label><input type="number" id="calc-fee" value="0.02" step="0.001"></div>
+                    <div><label class="text-[10px] text-[var(--fg-muted)] block mb-1">Slippage (%)</label><input type="number" id="calc-slip" value="0.05" step="0.01"></div>
+                </div>
+                <div class="grid grid-cols-5 gap-3 p-3 bg-[var(--bg-deep)] rounded-lg border border-[var(--border-base)]">
+                    <div><div class="text-[9px] text-[var(--fg-muted)] uppercase mb-0.5">Position Size</div><div class="mono text-sm font-bold" id="out-size">0.00441</div></div>
+                    <div><div class="text-[9px] text-[var(--fg-muted)] uppercase mb-0.5">Risk Amount</div><div class="mono text-sm font-bold text-[var(--red)]" id="out-risk">$0.75</div></div>
+                    <div><div class="text-[9px] text-[var(--fg-muted)] uppercase mb-0.5">Margin Req.</div><div class="mono text-sm font-bold" id="out-margin">$56.79</div></div>
+                    <div><div class="text-[9px] text-[var(--fg-muted)] uppercase mb-0.5">R:R Ratio</div><div class="mono text-sm font-bold text-[var(--green)]" id="out-rr">1:3.00</div></div>
+                    <div><div class="text-[9px] text-[var(--fg-muted)] uppercase mb-0.5">Liq. Price</div><div class="mono text-sm font-bold" id="out-liq">$51,480</div></div>
+                </div>
+                <div class="mt-2 p-2 bg-[var(--bg-deep)] rounded border border-[var(--border-base)] text-[10px] mono text-[var(--fg-dim)] leading-relaxed" id="calc-formula"></div>
+            </div>
+
+            <!-- Signal History -->
+            <div class="card flex-1 flex flex-col overflow-hidden min-h-0">
+                <div class="px-4 py-2.5 border-b border-[var(--border-base)] shrink-0"><h2 class="label">Signal History — Last 15</h2></div>
+                <div class="flex-1 overflow-y-auto"><table><thead><tr><th>Time</th><th>Pair</th><th>Direction</th><th>Entry</th><th>R:R</th><th>Conf.</th><th>Status</th></tr></thead><tbody id="sig-tbody"></tbody></table></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ──────── TAB: TRADE JOURNAL ──────── -->
+<div id="tab-journal" class="tab-panel gap-3">
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-8 gap-3 shrink-0">
+        <div class="card p-3 text-center"><div class="label mb-1">Total</div><div class="mono text-lg font-bold">46</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Wins</div><div class="mono text-lg font-bold text-[var(--green)]">29</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Losses</div><div class="mono text-lg font-bold text-[var(--red)]">17</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Win Rate</div><div class="mono text-lg font-bold text-[var(--green)]">63.0%</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Avg R-Mult</div><div class="mono text-lg font-bold text-[var(--green)]">+1.18R</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Profit Factor</div><div class="mono text-lg font-bold">1.84</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Best Trade</div><div class="mono text-lg font-bold text-[var(--green)]">+$2.85</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Worst Trade</div><div class="mono text-lg font-bold text-[var(--red)]">-$1.05</div></div>
+    </div>
+
+    <!-- Trade Table -->
+    <div class="card flex-1 flex flex-col overflow-hidden min-h-0">
+        <div class="px-4 py-2.5 border-b border-[var(--border-base)] flex justify-between items-center shrink-0">
+            <h2 class="label">Trade History — Detailed Post-Mortem Log</h2>
+            <span class="text-[10px] text-[var(--fg-dim)]">Click row to expand</span>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+            <table><thead class="sticky top-0 bg-[var(--bg-card)] z-10"><tr>
+                <th>#</th><th>Date</th><th>Pair</th><th>Side</th><th>Entry</th><th>Exit</th><th>P&L</th><th>R-Mult</th><th>MFE</th><th>MAE</th><th>Efficiency</th><th>Duration</th><th>Result</th>
+            </tr></thead><tbody id="journal-tbody"></tbody></table>
+        </div>
+    </div>
+</div>
+
+<!-- ──────── TAB: ANALYTICS ──────── -->
+<div id="tab-analytics" class="tab-panel gap-3 overflow-y-auto pr-1">
+    <!-- Metric Cards -->
+    <div class="grid grid-cols-6 gap-3 shrink-0">
+        <div class="card p-3 text-center"><div class="label mb-1">Sharpe Ratio</div><div class="mono text-lg font-bold">1.92</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Sortino Ratio</div><div class="mono text-lg font-bold">2.64</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Max Drawdown</div><div class="mono text-lg font-bold text-[var(--red)]">-3.8%</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Recovery Factor</div><div class="mono text-lg font-bold">3.28</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Expectancy</div><div class="mono text-lg font-bold text-[var(--green)]">+$0.41</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Avg Win/Loss</div><div class="mono text-lg font-bold">2.14</div></div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-2 gap-3 shrink-0" style="height:220px">
+        <div class="card p-4 flex flex-col"><h2 class="label mb-2 shrink-0">Drawdown History</h2><div class="flex-1 relative"><canvas id="c-dd" class="absolute inset-0 w-full h-full"></canvas></div></div>
+        <div class="card p-4 flex flex-col"><h2 class="label mb-2 shrink-0">Rolling Win Rate (10-Trade Window)</h2><div class="flex-1 relative"><canvas id="c-wr" class="absolute inset-0 w-full h-full"></canvas></div></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 shrink-0" style="height:220px">
+        <div class="card p-4 flex flex-col"><h2 class="label mb-2 shrink-0">R-Multiple Distribution</h2><div class="flex-1 relative"><canvas id="c-rdist" class="absolute inset-0 w-full h-full"></canvas></div></div>
+        <div class="card p-4 flex flex-col"><h2 class="label mb-2 shrink-0">Strategy Breakdown</h2><div class="flex-1 relative"><canvas id="c-strat" class="absolute inset-0 w-full h-full"></canvas></div></div>
+    </div>
+
+    <!-- Monthly Heatmap -->
+    <div class="card p-4 shrink-0">
+        <h2 class="label mb-3">Monthly Returns Heatmap (% ROI)</h2>
+        <div class="grid gap-1" style="grid-template-columns: 60px repeat(12, 1fr)">
+            <div class="text-[9px] text-[var(--fg-dim)]"></div>
+            <div class="text-[9px] text-[var(--fg-muted)] text-center">Jan</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Feb</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Mar</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Apr</div><div class="text-[9px] text-[var(--fg-muted)] text-center">May</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Jun</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Jul</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Aug</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Sep</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Oct</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Nov</div><div class="text-[9px] text-[var(--fg-muted)] text-center">Dec</div>
+        </div>
+        <div id="heatmap-grid" class="grid gap-1 mt-1" style="grid-template-columns: 60px repeat(12, 1fr)"></div>
+    </div>
+</div>
+
+<!-- ──────── TAB: SETTINGS ──────── -->
+<div id="tab-settings" class="tab-panel gap-3 overflow-y-auto pr-1">
+    <div class="max-w-4xl mx-auto space-y-4 pb-8 w-full">
+        <h1 class="text-lg font-bold">System Configuration</h1>
+
+        <!-- Risk Parameters -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Risk Parameters</h2>
+            <div class="grid grid-cols-3 gap-4">
+                <div><label class="label block mb-1.5">Max Risk / Trade (%)</label><input type="number" id="s-risk" value="1.5" step="0.1"></div>
+                <div><label class="label block mb-1.5">Max Daily Drawdown (%)</label><input type="number" id="s-ddd" value="4.0" step="0.5"></div>
+                <div><label class="label block mb-1.5">Max Total Drawdown (%)</label><input type="number" id="s-tdd" value="10.0" step="0.5"></div>
+                <div><label class="label block mb-1.5">Minimum R:R Ratio</label><input type="number" id="s-rr" value="2.0" step="0.1"></div>
+                <div><label class="label block mb-1.5">Min Confidence Score</label><input type="number" id="s-conf" value="0.80" step="0.05"></div>
+                <div><label class="label block mb-1.5">Max Leverage</label><input type="number" id="s-lev" value="5" step="1"></div>
+            </div>
+        </div>
+
+        <!-- Adaptive Calibration -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Adaptive Calibration</h2>
+            <div class="grid grid-cols-3 gap-4">
+                <div><label class="label block mb-1.5">Consec. Loss Threshold</label><input type="number" id="s-closs" value="2" step="1"></div>
+                <div><label class="label block mb-1.5">Reduced Risk (%)</label><input type="number" id="s-redrisk" value="0.5" step="0.1"></div>
+                <div><label class="label block mb-1.5">Recovery Wins Needed</label><input type="number" id="s-recwin" value="2" step="1"></div>
+            </div>
+        </div>
+
+        <!-- Session Killzones -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Session Killzones</h2>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg">
+                    <div class="flex items-center gap-3"><div class="toggle on" onclick="this.classList.toggle('on')"></div><span class="text-sm font-medium">London</span></div>
+                    <div class="flex gap-2 items-center"><input type="text" value="07:00" class="w-20 text-center text-xs"><span class="text-[var(--fg-dim)]">—</span><input type="text" value="10:00" class="w-20 text-center text-xs"></div>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg">
+                    <div class="flex items-center gap-3"><div class="toggle on" onclick="this.classList.toggle('on')"></div><span class="text-sm font-medium">New York</span></div>
+                    <div class="flex gap-2 items-center"><input type="text" value="12:00" class="w-20 text-center text-xs"><span class="text-[var(--fg-dim)]">—</span><input type="text" value="15:00" class="w-20 text-center text-xs"></div>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg">
+                    <div class="flex items-center gap-3"><div class="toggle" onclick="this.classList.toggle('on')"></div><span class="text-sm font-medium">Asia / Tokyo</span></div>
+                    <div class="flex gap-2 items-center"><input type="text" value="00:00" class="w-20 text-center text-xs"><span class="text-[var(--fg-dim)]">—</span><input type="text" value="03:00" class="w-20 text-center text-xs"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Macro News Shield -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Macro News Shield</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg">
+                    <span class="text-sm">Auto News Blackout</span><div class="toggle on" onclick="this.classList.toggle('on')"></div>
+                </div>
+                <div><label class="label block mb-1.5">Buffer Time (minutes)</label><input type="number" id="s-news" value="15" step="5"></div>
+            </div>
+        </div>
+
+        <!-- Alert Configuration -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Alert Configuration</h2>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg"><span class="text-sm">Drawdown Alerts</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg"><span class="text-sm">New Signal Alerts</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg"><span class="text-sm">Risk Tier Change Alerts</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg"><span class="text-sm">Session Start Alerts</span><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+                <div class="flex items-center justify-between p-3 bg-[var(--bg-deep)] rounded-lg"><span class="text-sm">Flash Crash Circuit Breaker</span><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            </div>
+        </div>
+
+        <!-- Trading Pairs -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Watchlist</h2>
+            <div class="flex flex-wrap gap-2" id="watchlist">
+                <span class="badge badge-blue flex items-center gap-1">BTC/USDT <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
+                <span class="badge badge-blue flex items-center gap-1">ETH/USDT <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
+                <span class="badge badge-blue flex items-center gap-1">SOL/USDT <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
+                <span class="badge badge-blue flex items-center gap-1">EUR/USD <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="card p-5">
+            <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">System Status</h2>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="flex justify-between p-2 bg-[var(--bg-deep)] rounded"><span class="text-[var(--fg-muted)]">Engine Version</span><span class="mono">v1.4.2</span></div>
+                <div class="flex justify-between p-2 bg-[var(--bg-deep)] rounded"><span class="text-[var(--fg-muted)]">Uptime</span><span class="mono text-[var(--green)]">72h 14m</span></div>
+                <div class="flex justify-between p-2 bg-[var(--bg-deep)] rounded"><span class="text-[var(--fg-muted)]">Last Scan</span><span class="mono" id="s-lastscan">—</span></div>
+                <div class="flex justify-between p-2 bg-[var(--bg-deep)] rounded"><span class="text-[var(--fg-muted)]">API Status</span><span class="text-[var(--green)] flex items-center gap-1"><span class="pulse-dot" style="width:5px;height:5px"></span> Connected</span></div>
+                <div class="flex justify-between p-2 bg-[var(--bg-deep)] rounded"><span class="text-[var(--fg-muted)]">Trades Today</span><span class="mono">3</span></div>
+                <div class="flex justify-between p-2 bg-[var(--bg-deep)] rounded"><span class="text-[var(--fg-muted)]">Risk Engine</span><span class="text-[var(--green)]">Active</span></div>
+            </div>
+        </div>
+
+        <button class="w-full py-3 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-opacity" onclick="saveSettings()">Save Configuration</button>
+    </div>
+</div>
+
+</main>
+
+<!-- ═══════════════════ JAVASCRIPT ENGINE ═══════════════════ -->
+<script>
+// ─────────────── MOCK DATA ENGINE ───────────────
+const MOCK = { equity: [], trades: [], signals: [] };
+
+function seed() {
+    // Equity curve: 30 days starting at $50 with realistic growth
+    let eq = 50;
+    const dailyReturns = [0.35,-0.12,0.48,0.22,-0.65,0.15,0.72,-0.28,0.55,0.18,-0.42,0.65,0.30,-0.15,0.88,-0.72,0.45,0.22,0.60,-0.38,0.52,0.15,-0.55,0.95,0.42,-0.18,0.35,0.68,-0.25,0.48];
+    dailyReturns.forEach(r => { eq += r; eq = Math.max(eq, 45); MOCK.equity.push(+eq.toFixed(2)); });
+
+    // Trades: 20 realistic trades
+    const pairs = ['BTC/USDT','BTC/USDT','BTC/USDT','ETH/USDT','ETH/USDT','SOL/USDT'];
+    const strats = ['SMC OB Entry','FVG Mitigation','Liquidity Sweep','Mean Reversion','Breakout Retest'];
+    const now = Date.now();
+    for (let i = 0; i < 20; i++) {
+        const isWin = Math.random() < 0.63;
+        const pair = pairs[Math.floor(Math.random()*pairs.length)];
+        const side = Math.random() > 0.45 ? 'LONG' : 'SHORT';
+        let basePrice = pair.includes('BTC') ? 62000+Math.random()*4000 : pair.includes('ETH') ? 3200+Math.random()*400 : 140+Math.random()*30;
+        const slDist = basePrice * (0.002 + Math.random()*0.003);
+        const rr = isWin ? (1.5 + Math.random()*2.5) : 1;
+        const exitPrice = isWin ? (side==='LONG' ? basePrice + slDist*rr : basePrice - slDist*rr) : (side==='LONG' ? basePrice - slDist : basePrice + slDist);
+        const pnl = isWin ? (0.40 + Math.random()*2.45) : -(0.20 + Math.random()*0.85);
+        const mfe = isWin ? Math.abs(pnl) * (1 + Math.random()*0.4) : Math.abs(pnl) * Math.random()*0.5;
+        const mae = isWin ? Math.abs(pnl) * Math.random()*0.3 : Math.abs(pnl) * (1 + Math.random()*0.2);
+        const duration = Math.floor(15 + Math.random()*180);
+        const date = new Date(now - (20-i)*24*3600000 + Math.random()*12*3600000);
+
+        MOCK.trades.push({
+            id: i+1, date: date.toISOString().slice(0,16).replace('T',' '),
+            pair, side, strat: strats[Math.floor(Math.random()*strats.length)],
+            entry: basePrice.toFixed(2), exit: exitPrice.toFixed(2),
+            sl: (side==='LONG' ? basePrice-slDist : basePrice+slDist).toFixed(2),
+            tp: (side==='LONG' ? basePrice+slDist*2.5 : basePrice-slDist*2.5).toFixed(2),
+            pnl: +pnl.toFixed(2), rmult: isWin ? +(pnl/0.75).toFixed(1) : -1.0,
+            mfe: +mfe.toFixed(2), mae: +mae.toFixed(2),
+            efficiency: Math.floor(50 + Math.random()*45),
+            duration: duration+'m', result: isWin ? 'WIN' : 'LOSS',
+            notes: isWin ? 'Clean entry on OB mitigation. Held to TP1, trailed runner.' : 'Stopped out — price reversed before reaching TP. Entry was slightly early.'
+        });
+    }
+
+    // Signals: last 15
+    const statuses = ['FILLED','FILLED','FILLED','STOPPED','FILLED','ABSTAINED','FILLED','STOPPED','FILLED','FILLED','FILLED','CANCELLED','FILLED','STOPPED','FILLED'];
+    for (let i = 0; i < 15; i++) {
+        const pair = pairs[Math.floor(Math.random()*pairs.length)];
+        const side = Math.random() > 0.45 ? 'LONG' : 'SHORT';
+        const baseP = pair.includes('BTC') ? 63000+Math.random()*3000 : pair.includes('ETH') ? 3100+Math.random()*400 : 130+Math.random()*30;
+        const conf = (0.70 + Math.random()*0.25).toFixed(2);
+        const rr = (1.5 + Math.random()*2.5).toFixed(1);
+        const d = new Date(now - i*5*3600000);
+        MOCK.signals.push({ time: d.toISOString().slice(11,16), pair, side, entry: baseP.toFixed(2), rr, conf, status: statuses[i] });
+    }
+}
+
+// ─────────────── CANVAS CHART UTILS ───────────────
+function initCanvas(id) {
+    const c = document.getElementById(id);
+    if (!c) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const r = c.parentElement.getBoundingClientRect();
+    c.width = r.width * dpr; c.height = r.height * dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { ctx, w: r.width, h: r.height };
+}
+
+function drawEquity() {
+    const s = initCanvas('c-equity'); if (!s) return;
+    const { ctx, w, h } = s;
+    const pad = { t: 10, r: 50, b: 25, l: 10 };
+    const data = MOCK.equity;
+    const min = Math.min(...data) - 1, max = Math.max(...data) + 1;
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    const sx = cw / (data.length - 1);
+    const sy = v => pad.t + ch - ((v - min) / (max - min)) * ch;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Grid lines
+    ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = pad.t + (ch / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        const val = max - (max - min) * (i / 4);
+        ctx.fillStyle = '#475569'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+        ctx.fillText('$' + val.toFixed(1), w - pad.r + 40, y + 3);
+    }
+
+    // Gradient fill
+    ctx.beginPath();
+    ctx.moveTo(pad.l, sy(data[0]));
+    for (let i = 1; i < data.length; i++) ctx.lineTo(pad.l + i * sx, sy(data[i]));
+    ctx.lineTo(pad.l + (data.length-1)*sx, h - pad.b);
+    ctx.lineTo(pad.l, h - pad.b); ctx.closePath();
+    const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+    grad.addColorStop(0, 'rgba(59,130,246,0.25)'); grad.addColorStop(1, 'rgba(59,130,246,0)');
+    ctx.fillStyle = grad; ctx.fill();
+
+    // Line
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(data[0]));
+    for (let i = 1; i < data.length; i++) ctx.lineTo(pad.l + i * sx, sy(data[i]));
+    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+    // End dot
+    const lastX = pad.l + (data.length-1)*sx, lastY = sy(data[data.length-1]);
+    ctx.beginPath(); ctx.arc(lastX, lastY, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#3b82f6'; ctx.fill();
+    ctx.beginPath(); ctx.arc(lastX, lastY, 7, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(59,130,246,0.3)'; ctx.lineWidth = 2; ctx.stroke();
+
+    // $50 baseline
+    const baseY = sy(50);
+    ctx.setLineDash([4,4]); ctx.strokeStyle = '#475569'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, baseY); ctx.lineTo(w-pad.r, baseY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#475569'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText('Start $50', pad.l+4, baseY-5);
+}
+
+function drawDrawdown() {
+    const s = initCanvas('c-dd'); if (!s) return;
+    const { ctx, w, h } = s;
+    const pad = { t: 5, r: 40, b: 20, l: 5 };
+    const data = [];
+    let peak = MOCK.equity[0];
+    MOCK.equity.forEach(v => { peak = Math.max(peak, v); data.push(((v - peak)/peak)*100); });
+    const minDD = Math.min(...data) - 0.5;
+    const cw = w-pad.l-pad.r, ch = h-pad.t-pad.b;
+    const sx = cw/(data.length-1);
+    const sy = v => pad.t + ((0-v)/(0-minDD))*ch;
+
+    ctx.clearRect(0,0,w,h);
+    // Fill
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(0));
+    data.forEach((v,i) => ctx.lineTo(pad.l+i*sx, sy(v)));
+    ctx.lineTo(pad.l+(data.length-1)*sx, sy(0)); ctx.closePath();
+    const g = ctx.createLinearGradient(0,pad.t,0,h-pad.b);
+    g.addColorStop(0,'rgba(239,68,68,0)'); g.addColorStop(1,'rgba(239,68,68,0.35)');
+    ctx.fillStyle = g; ctx.fill();
+    // Line
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(data[0]));
+    data.forEach((v,i) => { if(i>0) ctx.lineTo(pad.l+i*sx, sy(v)); });
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.stroke();
+    // Labels
+    ctx.fillStyle='#475569'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText('0%', w-pad.r+35, sy(0)+3);
+    ctx.fillText(minDD.toFixed(1)+'%', w-pad.r+35, h-pad.b+3);
+}
+
+function drawWinRate() {
+    const s = initCanvas('c-wr'); if (!s) return;
+    const { ctx, w, h } = s;
+    const pad = { t: 5, r: 40, b: 20, l: 5 };
+    // Simulate rolling win rates
+    const data = [50,55,60,70,60,50,60,70,80,70,60,70,65,60,70,75,80,70,65,60,55,60,65,70,75,70,65,60,65,63];
+    const cw = w-pad.l-pad.r, ch = h-pad.t-pad.b;
+    const sx = cw/(data.length-1);
+    const sy = v => pad.t + ch - ((v-40)/(90-40))*ch;
+
+    ctx.clearRect(0,0,w,h);
+    // 50% line
+    ctx.setLineDash([4,4]); ctx.strokeStyle='#475569'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(50)); ctx.lineTo(w-pad.r, sy(50)); ctx.stroke();
+    ctx.setLineDash([]);
+    // Fill
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(data[0]));
+    data.forEach((v,i) => { if(i>0) ctx.lineTo(pad.l+i*sx, sy(v)); });
+    ctx.lineTo(pad.l+(data.length-1)*sx, h-pad.b); ctx.lineTo(pad.l, h-pad.b); ctx.closePath();
+    const g = ctx.createLinearGradient(0,pad.t,0,h-pad.b);
+    g.addColorStop(0,'rgba(16,185,129,0.2)'); g.addColorStop(1,'rgba(16,185,129,0)');
+    ctx.fillStyle = g; ctx.fill();
+    // Line
+    ctx.beginPath(); ctx.moveTo(pad.l, sy(data[0]));
+    data.forEach((v,i) => { if(i>0) ctx.lineTo(pad.l+i*sx, sy(v)); });
+    ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.lineJoin='round'; ctx.stroke();
+    // Labels
+    ctx.fillStyle='#475569'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText('50%', w-pad.r+35, sy(50)+3);
+    ctx.fillText('80%', w-pad.r+35, sy(80)+3);
+}
+
+function drawRDist() {
+    const s = initCanvas('c-rdist'); if (!s) return;
+    const { ctx, w, h } = s;
+    const pad = { t: 10, r: 10, b: 25, l: 30 };
+    const buckets = [
+        { label: '-1.5R', val: 2, color: '#ef4444' },
+        { label: '-1.0R', val: 7, color: '#ef4444' },
+        { label: '-0.5R', val: 3, color: '#f87171' },
+        { label: '+0.5R', val: 2, color: '#6ee7b7' },
+        { label: '+1.0R', val: 4, color: '#34d399' },
+        { label: '+1.5R', val: 6, color: '#10b981' },
+        { label: '+2.0R', val: 8, color: '#10b981' },
+        { label: '+2.5R', val: 5, color: '#059669' },
+        { label: '+3.0R', val: 4, color: '#047857' },
+        { label: '+3.5R', val: 2, color: '#065f46' },
+    ];
+    const maxV = Math.max(...buckets.map(b=>b.val));
+    const cw = w-pad.l-pad.r, ch = h-pad.t-pad.b;
+    const bw = cw/buckets.length * 0.7, gap = cw/buckets.length * 0.3;
+
+    ctx.clearRect(0,0,w,h);
+    buckets.forEach((b,i) => {
+        const bh = (b.val/maxV)*ch;
+        const x = pad.l + i*(bw+gap) + gap/2;
+        const y = pad.t + ch - bh;
+        ctx.fillStyle = b.color; ctx.beginPath();
+        // Rounded top
+        const r = 3;
+        ctx.moveTo(x, y+r); ctx.arcTo(x, y, x+bw, y, r); ctx.arcTo(x+bw, y, x+bw, y+bh, r); ctx.lineTo(x+bw, pad.t+ch); ctx.lineTo(x, pad.t+ch); ctx.closePath(); ctx.fill();
+        // Label
+        ctx.fillStyle = '#64748b'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(b.label, x+bw/2, h-pad.b+12);
+        ctx.fillText(b.val, x+bw/2, y-4);
+    });
+}
+
+function drawStrategy() {
+    const s = initCanvas('c-strat'); if (!s) return;
+    const { ctx, w, h } = s;
+    const cx = w*0.35, cy = h/2, radius = Math.min(cx-20, cy-20);
+    const segments = [
+        { label: 'SMC OB Entry', pct: 0.38, color: '#3b82f6' },
+        { label: 'FVG Mitigation', pct: 0.25, color: '#10b981' },
+        { label: 'Liquidity Sweep', pct: 0.18, color: '#06b6d4' },
+        { label: 'Mean Reversion', pct: 0.12, color: '#a855f7' },
+        { label: 'Breakout Retest', pct: 0.07, color: '#f59e0b' },
+    ];
+
+    ctx.clearRect(0,0,w,h);
+    let startAngle = -Math.PI/2;
+    segments.forEach(seg => {
+        const endAngle = startAngle + seg.pct * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, endAngle);
+        ctx.closePath(); ctx.fillStyle = seg.color; ctx.fill();
+        // Gap
+        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,radius,startAngle,startAngle+0.02); ctx.closePath();
+        ctx.fillStyle = '#06060b'; ctx.fill();
+        startAngle = endAngle;
+    });
+    // Inner hole (donut)
+    ctx.beginPath(); ctx.arc(cx, cy, radius*0.55, 0, Math.PI*2);
+    ctx.fillStyle = '#10101c'; ctx.fill();
+
+    // Legend
+    const legendX = w*0.65;
+    segments.forEach((seg,i) => {
+        const y = 20 + i*28;
+        ctx.fillStyle = seg.color;
+        ctx.fillRect(legendX, y, 10, 10);
+        ctx.fillStyle = '#e2e8f0'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText(seg.label, legendX+16, y+9);
+        ctx.fillStyle = '#64748b'; ctx.font = '10px monospace';
+        ctx.fillText((seg.pct*100).toFixed(0)+'%', legendX+140, y+9);
+    });
+}
+
+// ─────────────── TABLE RENDERING ───────────────
+function renderJournal() {
+    const tb = document.getElementById('journal-tbody');
+    tb.innerHTML = '';
+    [...MOCK.trades].reverse().forEach(t => {
+        const isW = t.result === 'WIN';
+        const rowBg = isW ? 'rgba(16,185,129,0.02)' : 'rgba(239,68,68,0.02)';
+        const tr = document.createElement('tr');
+        tr.style.background = rowBg;
+        tr.innerHTML = `
+            <td class="mono text-[var(--fg-dim)]">${t.id}</td>
+            <td class="text-[var(--fg-muted)] text-[11px]">${t.date}</td>
+            <td class="font-semibold">${t.pair}</td>
+            <td><span class="${t.side==='LONG'?'text-[var(--green)]':'text-[var(--red)]'} font-semibold">${t.side}</span></td>
+            <td class="mono">${t.entry}</td><td class="mono">${t.exit}</td>
+            <td class="mono font-semibold ${isW?'text-[var(--green)]':'text-[var(--red)]'}">${t.pnl>0?'+':''}$${t.pnl.toFixed(2)}</td>
+            <td class="mono ${isW?'text-[var(--green)]':'text-[var(--red)]'}">${t.rmult>0?'+':''}${t.rmult}R</td>
+            <td class="mono text-[var(--green)]">$${t.mfe.toFixed(2)}</td>
+            <td class="mono text-[var(--red)]">$${t.mae.toFixed(2)}</td>
+            <td class="mono">${t.efficiency}%</td>
+            <td class="mono text-[var(--fg-muted)]">${t.duration}</td>
+            <td><span class="badge ${isW?'badge-green':'badge-red'}">${t.result}</span></td>`;
+        // Expandable detail row
+        const detailRow = document.createElement('tr');
+        detailRow.style.display = 'none';
+        detailRow.innerHTML = `<td colspan="13" class="p-4 bg-[var(--bg-deep)]">
+            <div class="grid grid-cols-3 gap-4 text-xs">
+                <div><div class="label mb-1">Strategy</div><div>${t.strat}</div></div>
+                <div><div class="label mb-1">Entry Efficiency</div><div class="mono">${t.efficiency}%</div></div>
+                <div><div class="label mb-1">Post-Mortem</div><div class="text-[var(--fg-muted)]">${t.notes}</div></div>
+            </div></td>`;
+        tr.addEventListener('click', () => { detailRow.style.display = detailRow.style.display === 'none' ? 'table-row' : 'none'; });
+        tb.appendChild(tr);
+        tb.appendChild(detailRow);
+    });
+}
+
+function renderSignals() {
+    const tb = document.getElementById('sig-tbody');
+    tb.innerHTML = '';
+    MOCK.signals.forEach(s => {
+        const statusBadge = s.status === 'FILLED' ? 'badge-green' : s.status === 'STOPPED' ? 'badge-red' : s.status === 'ABSTAINED' ? 'badge-amber' : 'badge-purple';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="mono text-[var(--fg-muted)]">${s.time}</td>
+            <td class="font-semibold">${s.pair}</td>
+            <td><span class="${s.side==='LONG'?'text-[var(--green)]':'text-[var(--red)]'} font-semibold">${s.side}</span></td>
+            <td class="mono">${s.entry}</td>
+            <td class="mono">1:${s.rr}</td>
+            <td class="mono">${s.conf}</td>
+            <td><span class="badge ${statusBadge}">${s.status}</span></td>`;
+        tb.appendChild(tr);
+    });
+}
+
+function renderJSON() {
+    const json = {
+        timestamp: new Date().toISOString(),
+        symbol: "BTC/USDT",
+        market_regime: "TRENDING_BULLISH",
+        action: "BUY_LONG",
+        confidence_score: 0.88,
+        account_metrics: {
+            current_balance: 50.00,
+            risk_amount_usd: 0.85,
+            risk_percentage: "1.7%"
+        },
+        execution_parameters: {
+            order_type: "LIMIT",
+            entry_price: 64350.00,
+            stop_loss_price: 64180.00,
+            take_profit_1: 64860.00,
+            take_profit_2: 65550.00,
+            position_size: 0.005,
+            leverage: "5x",
+            risk_to_reward_ratio: "1:3.06"
+        },
+        invalidation_condition: "Candle body close below 4H OB base ($64,150)",
+        abstention_reason: null
+    };
+    document.getElementById('json-output').textContent = JSON.stringify(json, null, 2);
+}
+
+function renderHeatmap() {
+    const grid = document.getElementById('heatmap-grid');
+    grid.innerHTML = '';
+    const years = [2025, 2026];
+    const monthData = [
+        [2.1,1.5,-0.8,3.2,1.8,-1.2,2.5,0.9,1.4,-0.5,2.8,1.6],
+        [1.8,2.3,0.5,1.2,-0.3,2.8,3.5,4.9,0,0,0,0]
+    ];
+    years.forEach((yr, yi) => {
+        const row = document.createElement('div');
+        row.className = 'text-[10px] text-[var(--fg-muted)] flex items-center mono';
+        row.textContent = yr;
+        row.style.gridColumn = '1';
+        grid.appendChild(row);
+        monthData[yi].forEach((v, mi) => {
+            const cell = document.createElement('div');
+            if (yi === 1 && mi >= 8) {
+                cell.className = 'heatmap-cell';
+                cell.style.background = 'var(--bg-deep)';
+                cell.textContent = '—';
+                cell.style.color = 'var(--fg-dim)';
+            } else {
+                const intensity = Math.min(Math.abs(v)/5, 1);
+                const bg = v >= 0 ? `rgba(16,185,129,${0.1+intensity*0.5})` : `rgba(239,68,68,${0.1+intensity*0.5})`;
+                const color = v >= 0 ? 'var(--green)' : 'var(--red)';
+                cell.className = 'heatmap-cell mono';
+                cell.style.background = bg;
+                cell.style.color = color;
+                cell.textContent = (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+            }
+            grid.appendChild(cell);
+        });
+    });
+}
+
+// ─────────────── POSITION CALCULATOR ───────────────
+function calcPosition() {
+    const bal = parseFloat(document.getElementById('calc-bal').value) || 0;
+    const risk = parseFloat(document.getElementById('calc-risk').value) || 0;
+    const entry = parseFloat(document.getElementById('calc-entry').value) || 0;
+    const sl = parseFloat(document.getElementById('calc-sl').value) || 0;
+    const tp = parseFloat(document.getElementById('calc-tp').value) || 0;
+    const lev = parseFloat(document.getElementById('calc-lev').value) || 1;
+    const fee = parseFloat(document.getElementById('calc-fee').value) || 0;
+    const slip = parseFloat(document.getElementById('calc-slip').value) || 0;
+
+    const riskAmt = bal * (risk / 100);
+    const slDist = Math.abs(entry - sl);
+    const spreadCost = entry * (slip / 100);
+    const effectiveSL = slDist + spreadCost;
+    const posSize = effectiveSL > 0 ? riskAmt / effectiveSL : 0;
+    const margin = (posSize * entry) / lev;
+    const rr = slDist > 0 ? Math.abs(tp - entry) / slDist : 0;
+    const liqPrice = entry * (1 - 1/lev + 0.005);
+    const feeCost = posSize * entry * (fee/100) * 2;
+
+    document.getElementById('out-size').textContent = posSize.toFixed(5);
+    document.getElementById('out-risk').textContent = '$' + riskAmt.toFixed(2);
+    document.getElementById('out-margin').textContent = '$' + margin.toFixed(2);
+    document.getElementById('out-rr').textContent = '1:' + rr.toFixed(2);
+    document.getElementById('out-rr').style.color = rr >= 2 ? 'var(--green)' : rr >= 1.5 ? 'var(--amber)' : 'var(--red)';
+    document.getElementById('out-liq').textContent = '$' + liqPrice.toFixed(0);
+
+    document.getElementById('calc-formula').innerHTML =
+        `<span style="color:var(--fg-muted)">Risk:</span> $${bal} × ${risk}% = <span style="color:var(--red)">$${riskAmt.toFixed(2)}</span>  |  ` +
+        `<span style="color:var(--fg-muted)">Δ SL:</span> |${entry} - ${sl}| + slip = ${effectiveSL.toFixed(2)}  |  ` +
+        `<span style="color:var(--fg-muted)">Size:</span> $${riskAmt.toFixed(2)} / ${effectiveSL.toFixed(2)} = <b>${posSize.toFixed(5)}</b>  |  ` +
+        `<span style="color:var(--fg-muted)">Margin:</span> (${posSize.toFixed(5)} × ${entry}) / ${lev} = $${margin.toFixed(2)}  |  ` +
+        `<span style="color:var(--fg-muted)">Fees (RT):</span> $${feeCost.toFixed(4)}`;
+}
+
+// ─────────────── CLOCK & TIMERS ───────────────
+function updateClock() {
+    const now = new Date();
+    document.getElementById('utc-clock').textContent = now.toISOString().slice(11,19) + ' UTC';
+    const h = now.getUTCHours();
+    let session = 'OFF-HOURS', needle = 50;
+    if (h >= 0 && h < 9) { session = 'TOKYO'; needle = (h/9)*33.3; }
+    if (h >= 7 && h < 16) { session = 'LONDON'; needle = 33.3 + ((h-7)/9)*33.3; }
+    if (h >= 12 && h < 21) { session = 'NEW YORK'; needle = 66.6 + ((h-12)/9)*33.3; }
+    document.getElementById('session-label').textContent = session;
+    document.getElementById('session-needle').style.left = needle + '%';
+    document.getElementById('s-lastscan').textContent = now.toISOString().slice(11,19);
+}
+
+let scanSec = 299;
+function updateScan() {
+    scanSec = scanSec <= 0 ? 299 : scanSec - 1;
+    const m = Math.floor(scanSec/60), s = scanSec%60;
+    document.getElementById('scan-cd').textContent = `0${m}:${s<10?'0':''}${s}`;
+}
+
+// ─────────────── SETTINGS ───────────────
+function saveSettings() {
+    const keys = ['s-risk','s-ddd','s-tdd','s-rr','s-conf','s-lev','s-closs','s-redrisk','s-recwin','s-news'];
+    const cfg = {};
+    keys.forEach(k => { cfg[k] = document.getElementById(k)?.value; });
+    localStorage.setItem('ares1-config', JSON.stringify(cfg));
+    // Flash save confirmation
+    const btn = document.querySelector('#tab-settings button');
+    btn.textContent = '✓ Saved'; btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'Save Configuration'; btn.style.background = ''; }, 1500);
+}
+function loadSettings() {
+    const raw = localStorage.getItem('ares1-config');
+    if (!raw) return;
+    try {
+        const cfg = JSON.parse(raw);
+        Object.entries(cfg).forEach(([k,v]) => { const el = document.getElementById(k); if (el) el.value = v; });
+    } catch(e) {}
+}
+
+// ─────────────── TAB NAVIGATION ───────────────
+function initNav() {
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            // Redraw charts when their tab becomes visible
+            requestAnimationFrame(() => {
+                if (btn.dataset.tab === 'dashboard') drawEquity();
+                if (btn.dataset.tab === 'analytics') { drawDrawdown(); drawWinRate(); drawRDist(); drawStrategy(); }
+            });
+        });
+    });
+}
+
+// ─────────────── CALCULATOR LIVE BINDING ───────────────
+function bindCalc() {
+    ['calc-bal','calc-risk','calc-entry','calc-sl','calc-tp','calc-lev','calc-fee','calc-slip'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', calcPosition);
+    });
+}
+
+// ─────────────── INIT ───────────────
+function boot() {
+    seed();
+    initNav();
+    renderJournal();
+    renderSignals();
+    renderJSON();
+    renderHeatmap();
+    calcPosition();
+    bindCalc();
+    loadSettings();
+    updateClock();
+
+    setTimeout(drawEquity, 100);
+
+    setInterval(updateClock, 1000);
+    setInterval(updateScan, 1000);
+
+    window.addEventListener('resize', () => {
+        const active = document.querySelector('.tab-panel.active');
+        if (active?.id === 'tab-dashboard') drawEquity();
+        if (active?.id === 'tab-analytics') { drawDrawdown(); drawWinRate(); drawRDist(); drawStrategy(); }
+    });
+}
+
+window.onload = boot;
+</script>
+</body>
+</html>
