@@ -105,7 +105,7 @@
     <div class="flex items-center gap-6">
         <div class="text-right">
             <div class="label">Balance</div>
-            <div class="mono font-bold text-base" id="hdr-bal">$50.00</div>
+            <div class="mono font-bold text-base" id="hdr-bal">--</div>
         </div>
         <div class="h-6 w-px bg-[var(--border-base)]"></div>
         <div class="text-right">
@@ -115,7 +115,7 @@
         <div class="h-6 w-px bg-[var(--border-base)]"></div>
         <div class="text-right">
             <div class="label">Win Rate</div>
-            <div class="mono font-bold text-base" id="hdr-wr">63.0%</div>
+            <div class="mono font-bold text-base" id="hdr-wr">--</div>
         </div>
         <div class="h-6 w-px bg-[var(--border-base)]"></div>
         <div class="text-right mono text-xs text-[var(--fg-muted)]">
@@ -142,9 +142,9 @@
 <div id="tab-dashboard" class="tab-panel active gap-3">
     <!-- Stats Row -->
     <div class="grid grid-cols-6 gap-3 shrink-0">
-        <div class="card p-3"><div class="label mb-1">Account Balance</div><div class="mono text-xl font-bold" id="d-balance">$50.00</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Starting: $50.00</div></div>
-        <div class="card p-3"><div class="label mb-1">Today's P&L</div><div class="mono text-xl font-bold text-[var(--green)]" id="d-pnl">+$1.85</div><div class="text-[10px] text-[var(--green)] mt-0.5">+3.70%</div></div>
-        <div class="card p-3"><div class="label mb-1">Win Rate</div><div class="mono text-xl font-bold">63.0%</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">29W / 17L</div></div>
+        <div class="card p-3"><div class="label mb-1">Account Balance</div><div class="mono text-xl font-bold" id="d-balance">--</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Starting: --</div></div>
+        <div class="card p-3"><div class="label mb-1">Today's P&L</div><div class="mono text-xl font-bold text-[var(--green)]" id="d-pnl">+$1.85</div><div class="text-[10px] text-[var(--green)] mt-0.5">--</div></div>
+        <div class="card p-3"><div class="label mb-1">Win Rate</div><div class="mono text-xl font-bold">--</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">--</div></div>
         <div class="card p-3"><div class="label mb-1">Total Trades</div><div class="mono text-xl font-bold">46</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Last 30 days</div></div>
         <div class="card p-3"><div class="label mb-1">Drawdown</div><div class="mono text-xl font-bold text-[var(--amber)]">-1.2%</div><div class="text-[10px] text-[var(--fg-muted)] mt-0.5">Max: -3.8%</div></div>
         <div class="card p-3 relative overflow-hidden">
@@ -177,20 +177,20 @@
                     <div>
                         <div class="label mb-1">Active Signal</div>
                         <div class="flex items-center gap-2">
-                            <span class="font-bold text-lg">BTC/USDT</span>
+                            <span class="font-bold text-lg">WAITING</span>
                             <span class="badge badge-green">LONG</span>
                         </div>
                     </div>
                     <div class="text-right">
                         <div class="label">Confidence</div>
-                        <div class="mono text-xl font-bold text-[var(--accent)]">0.88</div>
+                        <div class="mono text-xl font-bold text-[var(--accent)]">--</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-x-4 gap-y-2 mb-3 text-xs">
-                    <div><span class="text-[var(--fg-muted)]">Entry </span><span class="mono font-semibold">64,350.00</span></div>
+                    <div><span class="text-[var(--fg-muted)]">Entry </span><span class="mono font-semibold">0.00</span></div>
                     <div><span class="text-[var(--fg-muted)]">Stop Loss </span><span class="mono font-semibold text-[var(--red)]">64,180.00</span></div>
                     <div><span class="text-[var(--fg-muted)]">TP1 </span><span class="mono font-semibold text-[var(--green)]">64,860.00</span></div>
-                    <div><span class="text-[var(--fg-muted)]">TP2 </span><span class="mono font-semibold text-[var(--green)]">65,550.00</span></div>
+                    <div><span class="text-[var(--fg-muted)]">TP2 </span><span class="mono font-semibold text-[var(--green)]">0.00</span></div>
                     <div><span class="text-[var(--fg-muted)]">Size </span><span class="mono font-semibold">0.005 BTC</span></div>
                     <div><span class="text-[var(--fg-muted)]">Leverage </span><span class="mono font-semibold">5x Isolated</span></div>
                 </div>
@@ -412,7 +412,7 @@
         <div class="card p-3 text-center"><div class="label mb-1">Total</div><div class="mono text-lg font-bold">46</div></div>
         <div class="card p-3 text-center"><div class="label mb-1">Wins</div><div class="mono text-lg font-bold text-[var(--green)]">29</div></div>
         <div class="card p-3 text-center"><div class="label mb-1">Losses</div><div class="mono text-lg font-bold text-[var(--red)]">17</div></div>
-        <div class="card p-3 text-center"><div class="label mb-1">Win Rate</div><div class="mono text-lg font-bold text-[var(--green)]">63.0%</div></div>
+        <div class="card p-3 text-center"><div class="label mb-1">Win Rate</div><div class="mono text-lg font-bold text-[var(--green)]">--</div></div>
         <div class="card p-3 text-center"><div class="label mb-1">Avg R-Mult</div><div class="mono text-lg font-bold text-[var(--green)]">+1.18R</div></div>
         <div class="card p-3 text-center"><div class="label mb-1">Profit Factor</div><div class="mono text-lg font-bold">1.84</div></div>
         <div class="card p-3 text-center"><div class="label mb-1">Best Trade</div><div class="mono text-lg font-bold text-[var(--green)]">+$2.85</div></div>
@@ -540,7 +540,7 @@
         <div class="card p-5">
             <h2 class="font-semibold mb-4 pb-2 border-b border-[var(--border-base)]">Watchlist</h2>
             <div class="flex flex-wrap gap-2" id="watchlist">
-                <span class="badge badge-blue flex items-center gap-1">BTC/USDT <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
+                <span class="badge badge-blue flex items-center gap-1">WAITING <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
                 <span class="badge badge-blue flex items-center gap-1">ETH/USDT <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
                 <span class="badge badge-blue flex items-center gap-1">SOL/USDT <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
                 <span class="badge badge-blue flex items-center gap-1">EUR/USD <span class="cursor-pointer opacity-50 hover:opacity-100" onclick="this.parentElement.remove()">×</span></span>
@@ -574,11 +574,11 @@ const MOCK = { equity: [], trades: [], signals: [] };
 function seed() {
     // Equity curve: 30 days starting at $50 with realistic growth
     let eq = 50;
-    const dailyReturns = [0.35,-0.12,0.48,0.22,-0.65,0.15,0.72,-0.28,0.55,0.18,-0.42,0.65,0.30,-0.15,0.88,-0.72,0.45,0.22,0.60,-0.38,0.52,0.15,-0.55,0.95,0.42,-0.18,0.35,0.68,-0.25,0.48];
+    const dailyReturns = [0.35,-0.12,0.48,0.22,-0.65,0.15,0.72,-0.28,0.55,0.18,-0.42,0.65,0.30,-0.15,--,-0.72,0.45,0.22,0.60,-0.38,0.52,0.15,-0.55,0.95,0.42,-0.18,0.35,0.68,-0.25,0.48];
     dailyReturns.forEach(r => { eq += r; eq = Math.max(eq, 45); MOCK.equity.push(+eq.toFixed(2)); });
 
     // Trades: 20 realistic trades
-    const pairs = ['BTC/USDT','BTC/USDT','BTC/USDT','ETH/USDT','ETH/USDT','SOL/USDT'];
+    const pairs = ['WAITING','WAITING','WAITING','ETH/USDT','ETH/USDT','SOL/USDT'];
     const strats = ['SMC OB Entry','FVG Mitigation','Liquidity Sweep','Mean Reversion','Breakout Retest'];
     const now = Date.now();
     for (let i = 0; i < 20; i++) {
@@ -884,10 +884,10 @@ function renderSignals() {
 function renderJSON() {
     const json = {
         timestamp: new Date().toISOString(),
-        symbol: "BTC/USDT",
+        symbol: "WAITING",
         market_regime: "TRENDING_BULLISH",
         action: "BUY_LONG",
-        confidence_score: 0.88,
+        confidence_score: --,
         account_metrics: {
             current_balance: 50.00,
             risk_amount_usd: 0.85,
