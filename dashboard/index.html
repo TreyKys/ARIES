@@ -1002,6 +1002,14 @@ function updateScan() {
 }
 
 // ─────────────── SETTINGS ───────────────
+function saveEngineUrl() {
+    const url = document.getElementById('s-engine-url').value.trim();
+    if (url) {
+        localStorage.setItem('ares_engine_ip', url);
+        window.location.reload();
+    }
+}
+
 function saveSettings() {
     const keys = ['s-risk','s-ddd','s-tdd','s-rr','s-conf','s-lev','s-closs','s-redrisk','s-recwin','s-news'];
     const cfg = {};
@@ -1013,6 +1021,9 @@ function saveSettings() {
     setTimeout(() => { btn.textContent = 'Save Configuration'; btn.style.background = ''; }, 1500);
 }
 function loadSettings() {
+    const savedUrl = localStorage.getItem("ares_engine_ip");
+    if (savedUrl) document.getElementById("s-engine-url").value = savedUrl;
+
     const raw = localStorage.getItem('ares1-config');
     if (!raw) return;
     try {
