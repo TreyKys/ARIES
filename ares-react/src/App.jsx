@@ -113,7 +113,7 @@ export default function App() {
           </div>
         )}
         
-        {activeTab === 'dashboard' && <Dashboard data={engineData} supabase={createClient(supabaseUrl, supabaseKey)} />}
+        {activeTab === 'dashboard' && <Dashboard data={engineData} supabase={hasCredentials ? createClient(supabaseUrl, supabaseKey) : null} />}
         {activeTab === 'mtf' && <MTFAnalysis data={mtfData} />}
         {activeTab === 'signals' && <TradeSignals signals={signalsList} />}
         {activeTab === 'journal' && <TradeJournal trades={tradesList} />}
