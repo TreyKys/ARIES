@@ -90,18 +90,18 @@ export default function Dashboard({ data, supabase }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
         <div className="card p-4">
           <div className="text-xs text-fg-muted uppercase font-bold mb-1">Account Balance</div>
-          <div className="text-2xl font-bold">${data?.balance?.toFixed(2) || '0.00'}</div>
+          <div className="text-2xl font-bold">${Number(data?.balance || 0).toFixed(2) || '0.00'}</div>
         </div>
         <div className="card p-4">
           <div className="text-xs text-fg-muted uppercase font-bold mb-1">Today's P&L</div>
           <div className={`text-2xl font-bold ${data?.todayPnl?.abs > 0 ? 'text-green' : data?.todayPnl?.abs < 0 ? 'text-red' : ''}`}>
-            {data?.todayPnl?.abs > 0 ? '+' : ''}{data?.todayPnl?.abs?.toFixed(2) || '0.00'} 
-            <span className="text-sm ml-2">({data?.todayPnl?.pct?.toFixed(2) || '0.00'}%)</span>
+            {data?.todayPnl?.abs > 0 ? '+' : ''}{Number(data?.todayPnl?.abs || 0).toFixed(2) || '0.00'} 
+            <span className="text-sm ml-2">({Number(data?.todayPnl?.pct || 0).toFixed(2) || '0.00'}%)</span>
           </div>
         </div>
         <div className="card p-4">
           <div className="text-xs text-fg-muted uppercase font-bold mb-1">Win Rate</div>
-          <div className="text-2xl font-bold text-blue">{data?.winRate?.toFixed(1) || '0.0'}%</div>
+          <div className="text-2xl font-bold text-blue">{Number(data?.winRate || 0).toFixed(1) || '0.0'}%</div>
         </div>
         <div className="card p-4">
           <div className="text-xs text-fg-muted uppercase font-bold mb-1">System Status</div>
