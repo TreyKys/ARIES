@@ -1046,8 +1046,59 @@ function bindCalc() {
 }
 
 // ─────────────── INIT ───────────────
+
+    const savedIp = localStorage.getItem('ares_engine_ip') || 'localhost';
+    const WS_URL = `ws://${savedIp}:8080/ws`;
+    let socket;
+    
+    function connectWebSocket() {
+        socket = new WebSocket(WS_URL);
+        
+        socket.onopen = () => {
+            console.log('Connected to ARES-1 Engine');
+            document.getElementById('sys-status').textContent = 'CONNECTED';
+            document.getElementById('sys-status').className = 'px-2 py-1 bg-emerald-900/50 text-emerald-400 text-xs rounded-full font-mono font-bold animate-pulse border border-emerald-500/30';
+        };
+        
+        socket.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'heartbeat') {
+                    const sec = msg.data.uptime_seconds;
+                    const h = Math.floor(sec / 3600);
+                    const m = Math.floor((sec % 3600) / 60);
+                    document.getElementById('engine-uptime').textContent = `${h}h ${m}m`;
+                } else if (msg.type === 'equity_update') {
+                    MOCK.equity.push(msg.data.equity);
+                    if (MOCK.equity.length > 50) MOCK.equity.shift();
+                    drawEquity();
+                } else if (msg.type === 'signal') {
+                    MOCK.signals.unshift({
+                        time: new Date().toISOString(),
+                        symbol: msg.data.symbol,
+                        dir: 'LIVE',
+                        entry: 0, sl: 0, tp: 0, rr: 0,
+                        conf: msg.data.confluence,
+                        status: 'Pending'
+                    });
+                    if (MOCK.signals.length > 15) MOCK.signals.pop();
+                    renderSignals();
+                }
+            } catch (e) {
+                console.error('WS Error:', e);
+            }
+        };
+        
+        socket.onclose = () => {
+            document.getElementById('sys-status').textContent = 'DISCONNECTED';
+            document.getElementById('sys-status').className = 'px-2 py-1 bg-red-900/50 text-red-400 text-xs rounded-full font-mono font-bold border border-red-500/30';
+            setTimeout(connectWebSocket, 5000);
+        };
+    }
+
 function boot() {
     seed();
+    connectWebSocket();
     initNav();
     renderJournal();
     renderSignals();
