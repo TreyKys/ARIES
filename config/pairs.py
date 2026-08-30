@@ -12,48 +12,21 @@ class TradingPair:
     price_precision: int
     tick_size: float
 
-WATCHED_PAIRS: List[TradingPair] = [
-    TradingPair(
-        symbol="BTC/USDT",
+# Automatically scaling to 20 High-Liquidity Pairs
+binance_tickers = ["BTC", "ETH", "SOL", "XRP", "BNB", "ADA", "AVAX", "DOGE", "DOT", "LINK", "MATIC", "INJ", "RNDR", "OP", "ARB", "SUI", "APT", "NEAR", "FTM", "TIA"]
+
+WATCHED_PAIRS: List[TradingPair] = []
+for ticker in binance_tickers:
+    WATCHED_PAIRS.append(TradingPair(
+        symbol=f"{ticker}/USDT",
         exchange="binance",
-        base="BTC",
+        base=ticker,
         quote="USDT",
-        min_qty=0.001,
-        qty_precision=3,
-        price_precision=2,
-        tick_size=0.01
-    ),
-    TradingPair(
-        symbol="ETH/USDT",
-        exchange="binance",
-        base="ETH",
-        quote="USDT",
-        min_qty=0.01,
-        qty_precision=3,
-        price_precision=2,
-        tick_size=0.01
-    ),
-    TradingPair(
-        symbol="EUR/USD",
-        exchange="oanda",
-        base="EUR",
-        quote="USD",
-        min_qty=1.0,
-        qty_precision=0,
-        price_precision=5,
-        tick_size=0.00001
-    ),
-    TradingPair(
-        symbol="GBP/JPY",
-        exchange="oanda",
-        base="GBP",
-        quote="JPY",
-        min_qty=1.0,
-        qty_precision=0,
-        price_precision=3,
-        tick_size=0.001
-    )
-]
+        min_qty=0.1 if ticker not in ['BTC', 'ETH'] else 0.001,
+        qty_precision=1 if ticker not in ['BTC', 'ETH'] else 3,
+        price_precision=4 if ticker not in ['BTC', 'ETH'] else 2,
+        tick_size=0.0001 if ticker not in ['BTC', 'ETH'] else 0.01
+    ))
 
 def get_pair_by_symbol(symbol: str) -> Optional[TradingPair]:
     for pair in WATCHED_PAIRS:

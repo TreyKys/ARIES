@@ -6,6 +6,8 @@ export default function Dashboard({ data, supabase }) {
   const chartContainerRef = useRef();
   const [logs, setLogs] = useState([]);
   const logsEndRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+  const [isAutoScroll, setIsAutoScroll] = useState(true);
   
   // Realtime Logs Subscription
   useEffect(() => {
@@ -24,10 +26,19 @@ export default function Dashboard({ data, supabase }) {
     return () => supabase.removeChannel(feedSub);
   }, [supabase]);
 
-  // Auto-scroll logs
+  // Smart auto-scroll logs
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    if (isAutoScroll && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [logs, isAutoScroll]);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    setIsAutoScroll(scrollHeight - scrollTop - clientHeight < 50);
+  };
 
   // Chart setup
   useEffect(() => {
@@ -128,8 +139,14 @@ export default function Dashboard({ data, supabase }) {
       <div className="card h-64 shrink-0 flex flex-col overflow-hidden bg-[#0d1117] border-gray-800">
         <div className="p-2 border-b border-gray-800 font-mono text-xs text-gray-400 flex items-center gap-2 bg-[#161b22]">
           <Terminal size={14} /> THE COUNCIL - LIVE REASONING FEED
+          <button 
+            onClick={() => setIsAutoScroll(!isAutoScroll)} 
+            className={`ml-auto px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${isAutoScroll ? 'bg-primary/20 text-primary border-primary' : 'bg-gray-800 text-gray-400 border-gray-600'}`}
+          >
+            {isAutoScroll ? 'Auto-Scroll: ON' : 'Auto-Scroll: PAUSED'}
+          </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed">
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed">
           {logs.length === 0 ? (
             <div className="text-gray-500 italic">Awaiting Council initialization...</div>
           ) : (

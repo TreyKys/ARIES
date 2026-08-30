@@ -29,15 +29,22 @@ class CandleStore:
         """Register a callback for when a new candle completes on any timeframe."""
         self.callbacks.append(callback)
 
-    async def add_candle(self, symbol: str, timeframe: str, candle: Candle):
+    async def add_candle(self, symbol: str, timeframe: str, candle: Candle, is_historical: bool = False):
         """Adds a candle and triggers callbacks/resampling if appropriate."""
         async with self._lock:
             store = self.data[symbol][timeframe]
-            # Check if this is a new candle or an update to the current one
-            if len(store) > 0 and store[-1].timestamp == candle.timestamp:
-                store[-1] = candle
+            
+            # Check if candle already exists
+            existing_idx = None
+            for i in range(len(store)-1, -1, -1):
+                if store[i].timestamp == candle.timestamp:
+                    existing_idx = i
+                    break
+                    
+            if existing_idx is not None:
+                store[existing_idx] = candle
             else:
-                if len(store) > 0:
+                if len(store) > 0 and candle.timestamp > store[-1].timestamp and not is_historical:
                     # Previous candle closed
                     closed_candle = store[-1]
                     for cb in self.callbacks:
@@ -45,7 +52,12 @@ class CandleStore:
                             asyncio.create_task(cb(symbol, timeframe, closed_candle))
                         else:
                             cb(symbol, timeframe, closed_candle)
+                
                 store.append(candle)
+                # Keep sorted
+                sorted_store = sorted(list(store), key=lambda x: x.timestamp)
+                store.clear()
+                store.extend(sorted_store)
                 
             if timeframe == '1m':
                 await self._resample_from_1m(symbol)
