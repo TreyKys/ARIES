@@ -99,12 +99,19 @@ def run_backtest(
     starting_capital: float = 50.0,
     risk_config: Optional[RiskConfig] = None,
     costs: Optional[Costs] = None,
+    ml_model=None,
 ) -> BacktestResult:
     risk_config = risk_config or RiskConfig()
     broker = PaperBroker(starting_capital, costs)
 
     all_bars = bars_from_candles(candles)
     n = len(candles)
+
+    # Precompute all features ONCE (O(n) backtest). Optionally fill the
+    # ML win-probability slot from a trained model before the loop.
+    features = strategy.prepare(all_bars)
+    if ml_model is not None:
+        features.ml_win_prob = ml_model.predict_series(features)
 
     peak = starting_capital
     consecutive_losses = 0
@@ -124,15 +131,14 @@ def run_backtest(
         trade = broker.process(candle)
         if trade is not None:
             consecutive_losses = 0 if trade.pnl > 0 else consecutive_losses + 1
+            # Drawdown is measured on REALISED equity. Tracking peak on
+            # mark-to-market lets a brief unrealised spike inflate the peak
+            # and permanently trip the halt.
+            peak = max(peak, broker.equity)
 
-        # 2. if flat, ask the strategy using data up to & including this candle
+        # 2. if flat, ask the strategy (reads precomputed features at i)
         if broker.flat and (i + 1) >= getattr(strategy, "warmup", 0):
-            window = Bars(
-                ts=all_bars.ts[: i + 1], open=all_bars.open[: i + 1],
-                high=all_bars.high[: i + 1], low=all_bars.low[: i + 1],
-                close=all_bars.close[: i + 1], volume=all_bars.volume[: i + 1],
-            )
-            decision = strategy.evaluate(window)
+            decision = strategy.signal_at(features, i)
             if decision is not None:
                 entry_ref = candle.close
                 account = AccountState(
@@ -145,9 +151,8 @@ def run_backtest(
                 if rd.approved:
                     broker.open(symbol, decision, rd.size, rd.risk_amount, entry_ref, candle.ts)
 
-        # 3. mark to market & track peak
+        # 3. mark to market for the equity curve (peak tracked on realised equity above)
         mtm = broker.mark_to_market(candle.close)
-        peak = max(peak, mtm)
         equity_curve.append((candle.ts, mtm))
 
     # close any dangling position at the final close

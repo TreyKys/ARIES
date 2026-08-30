@@ -16,3 +16,7 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# large datasets & trained models (regenerate via scripts/)
+data/
+models/

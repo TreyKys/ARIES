@@ -34,6 +34,9 @@ def main() -> int:
     p.add_argument("--csv", default="")
     p.add_argument("--capital", type=float, default=50.0)
     p.add_argument("--allow-short", action="store_true")
+    p.add_argument("--eval-edge", action="store_true",
+                   help="disable drawdown/daily halts to measure raw strategy edge "
+                        "over the whole sample (evaluation only, not a live config)")
     args = p.parse_args()
 
     if args.source == "synthetic":
@@ -57,9 +60,11 @@ def main() -> int:
     strategy = TrendPullbackStrategy(allow_short=args.allow_short)
     # Binance USDⓈ-M taker ~0.05%/side; model spread+slippage at 0.05%.
     costs = Costs(taker_fee=0.0005, maker_fee=0.0002, slippage=0.0005)
+    rc = (RiskConfig(max_total_drawdown=10.0, max_daily_drawdown=10.0)
+          if args.eval_edge else RiskConfig())
     result = run_backtest(candles, strategy, symbol=args.symbol,
                           starting_capital=args.capital,
-                          risk_config=RiskConfig(), costs=costs)
+                          risk_config=rc, costs=costs)
 
     m = result.metrics
     print("=" * 68)

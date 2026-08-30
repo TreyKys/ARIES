@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 from typing import Optional
 
+import numpy as np
+
 from ares import datasource
 from ares.backtest import run_backtest
+from ares.features import FeatureBundle
 from ares.strategy import Bars, TrendPullbackStrategy
-from ares.types import Costs, RiskDecision, Side, StrategyDecision
+from ares.types import Costs, Side, StrategyDecision
 from ares.risk import RiskConfig
 
 
@@ -13,10 +16,21 @@ class AlwaysLong:
     """Test double: enter LONG whenever flat. Isolates broker/backtest math."""
     warmup: int = 2
 
-    def evaluate(self, bars: Bars) -> Optional[StrategyDecision]:
-        c = float(bars.close[-1])
+    def prepare(self, bars: Bars) -> FeatureBundle:
+        nan = np.full(len(bars), np.nan)
+        return FeatureBundle(
+            ts=bars.ts, open=bars.open, high=bars.high, low=bars.low,
+            close=bars.close, volume=bars.volume,
+            ema_fast=nan, ema_slow=nan, rsi=nan, atr=nan,
+        )
+
+    def signal_at(self, fb: FeatureBundle, i: int) -> Optional[StrategyDecision]:
+        c = float(fb.close[i])
         return StrategyDecision(side=Side.LONG, stop_price=c * 0.99,
                                 take_profit_price=c * 1.02, reason="always")
+
+    def evaluate(self, bars: Bars) -> Optional[StrategyDecision]:
+        return self.signal_at(self.prepare(bars), len(bars) - 1)
 
 
 def _candles():
