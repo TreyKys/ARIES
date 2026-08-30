@@ -1,12 +1,26 @@
+# --- Core deterministic brain (ares/) + backtester ---
+numpy>=1.26.0
+pandas>=2.2.0
+
+# --- Data & exchange ---
 ccxt>=4.0.0
+aiohttp>=3.9.0
+httpx>=0.27.0
+websockets>=12.0
+
+# --- Config / storage ---
+pydantic>=2.6.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+aiosqlite>=0.20.0
+
+# --- Live engine services (existing) ---
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
-websockets>=12.0
-pandas>=2.2.0
-numpy>=1.26.0
-ta>=0.11.0
-aiosqlite>=0.20.0
-python-dotenv>=1.0.0
-httpx>=0.27.0
-pydantic>=2.6.0
 python-telegram-bot>=21.0
+supabase>=2.4.0
+tenacity>=8.2.0
+google-genai>=0.3.0
+
+# --- Dev ---
+pytest>=8.0.0
