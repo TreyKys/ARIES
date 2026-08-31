@@ -172,9 +172,12 @@ class DonchianBreakoutStrategy:
     exit_mode: str = "fixed"        # "fixed" (reward_multiple TP) or "trail" (let winners run)
     trail_atr_mult: float = 3.0     # trailing stop distance in ATRs (trail mode)
     trend_filter_ema: int = 0       # 0 = off; else only trade with the EMA trend
+    adx_min: float = 0.0            # 0 = off; else only trade when ADX >= this (trending regime)
+    adx_period: int = 14
 
     def __post_init__(self) -> None:
-        self.warmup = max(self.channel, self.atr_period, self.trend_filter_ema) + 2
+        self.warmup = max(self.channel, self.atr_period, self.trend_filter_ema,
+                          2 * self.adx_period) + 2
 
     def prepare(self, bars: Bars) -> FeatureBundle:
         import pandas as pd
@@ -188,6 +191,8 @@ class DonchianBreakoutStrategy:
         extra = {"don_hi": don_hi, "don_lo": don_lo}
         if self.trend_filter_ema > 0:
             extra["trend_ema"] = indicators.ema(bars.close, self.trend_filter_ema)
+        if self.adx_min > 0:
+            extra["adx"] = indicators.adx(bars.high, bars.low, bars.close, self.adx_period)
         return FeatureBundle(
             ts=bars.ts, open=bars.open, high=bars.high, low=bars.low,
             close=bars.close, volume=bars.volume,
@@ -219,6 +224,13 @@ class DonchianBreakoutStrategy:
         close = fb.close[i]
         if np.isnan(hi) or np.isnan(lo) or np.isnan(a) or a <= 0:
             return None
+
+        # regime gate: only trade when the market is actually trending
+        adx_arr = fb.extra.get("adx")
+        if adx_arr is not None:
+            av = adx_arr[i]
+            if np.isnan(av) or av < self.adx_min:
+                return None
 
         trend_ema = fb.extra.get("trend_ema")
         te = trend_ema[i] if trend_ema is not None else None

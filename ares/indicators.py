@@ -83,3 +83,45 @@ def atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) 
     for i in range(period, tr.size):
         out[i] = (out[i - 1] * (period - 1) + tr[i]) / period
     return out
+
+
+def _wilder_smooth(values: np.ndarray, period: int) -> np.ndarray:
+    out = np.full_like(values, np.nan)
+    if values.size < period:
+        return out
+    out[period - 1] = values[:period].sum()
+    for i in range(period, values.size):
+        out[i] = out[i - 1] - (out[i - 1] / period) + values[i]
+    return out
+
+
+def adx(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) -> np.ndarray:
+    """Wilder's ADX — trend strength (0-100). High = trending, low = chop."""
+    high = np.asarray(high, float); low = np.asarray(low, float); close = np.asarray(close, float)
+    n = high.size
+    out = np.full(n, np.nan)
+    if n < 2 * period:
+        return out
+    up = high[1:] - high[:-1]
+    down = low[:-1] - low[1:]
+    plus_dm = np.where((up > down) & (up > 0), up, 0.0)
+    minus_dm = np.where((down > up) & (down > 0), down, 0.0)
+    tr = true_range(high, low, close)[1:]
+
+    atr_s = _wilder_smooth(tr, period)
+    plus_s = _wilder_smooth(plus_dm, period)
+    minus_s = _wilder_smooth(minus_dm, period)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        plus_di = 100 * plus_s / atr_s
+        minus_di = 100 * minus_s / atr_s
+        dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
+    dx = np.nan_to_num(dx, nan=0.0, posinf=0.0)
+
+    adx_vals = np.full(dx.size, np.nan)
+    start = period - 1
+    if dx.size >= start + period:
+        adx_vals[start + period - 1] = dx[start:start + period].mean()
+        for i in range(start + period, dx.size):
+            adx_vals[i] = (adx_vals[i - 1] * (period - 1) + dx[i]) / period
+    out[1:] = adx_vals
+    return out

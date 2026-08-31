@@ -36,6 +36,15 @@ def test_atr_positive_and_length():
     assert (valid > 0).all()
 
 
+def test_adx_bounds_and_trend_detection():
+    # strong uptrend should register high ADX; flat line near zero
+    up = np.arange(1, 120, dtype=float)
+    a = indicators.adx(up + 1, up, up, period=14)
+    valid = a[~np.isnan(a)]
+    assert valid.min() >= 0.0 and valid.max() <= 100.0
+    assert valid[-1] > 40.0                      # persistent trend -> high ADX
+
+
 def test_indicators_are_deterministic():
     x = 100 + np.cumsum(np.random.default_rng(3).normal(0, 1, 200))
     assert np.array_equal(indicators.ema(x, 20), indicators.ema(x, 20), equal_nan=True)
