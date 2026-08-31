@@ -47,6 +47,7 @@ class PaperBroker:
             symbol=symbol, side=decision.side, size=size, entry_price=fill,
             stop_price=decision.stop_price, take_profit_price=decision.take_profit_price,
             entry_ts=ts, risk_amount=risk_amount, entry_fee=entry_fee,
+            trail_distance=decision.trail_distance, best_price=fill,
         )
         return self.position
 
@@ -56,6 +57,7 @@ class PaperBroker:
             return None
         p = self.position
 
+        # 1. Exit check uses the stop from PRIOR candles (no intrabar optimism).
         exit_price: Optional[float] = None
         reason = ""
         if p.side is Side.LONG:
@@ -73,9 +75,18 @@ class PaperBroker:
                 exit_price = p.take_profit_price
                 reason = "target"
 
-        if exit_price is None:
-            return None
-        return self._close(exit_price, candle.ts, reason)
+        if exit_price is not None:
+            return self._close(exit_price, candle.ts, reason)
+
+        # 2. No exit: ratchet the trailing stop for the NEXT candle.
+        if p.trail_distance is not None:
+            if p.side is Side.LONG:
+                p.best_price = max(p.best_price, candle.high)
+                p.stop_price = max(p.stop_price, p.best_price - p.trail_distance)
+            else:
+                p.best_price = min(p.best_price, candle.low)
+                p.stop_price = min(p.stop_price, p.best_price + p.trail_distance)
+        return None
 
     def close_at(self, price: float, ts: int, reason: str = "manual") -> Optional[Trade]:
         if self.position is None:

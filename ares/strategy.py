@@ -169,9 +169,12 @@ class DonchianBreakoutStrategy:
     atr_mult: float = 2.0
     reward_multiple: float = 2.0
     allow_short: bool = False
+    exit_mode: str = "fixed"        # "fixed" (reward_multiple TP) or "trail" (let winners run)
+    trail_atr_mult: float = 3.0     # trailing stop distance in ATRs (trail mode)
+    trend_filter_ema: int = 0       # 0 = off; else only trade with the EMA trend
 
     def __post_init__(self) -> None:
-        self.warmup = max(self.channel, self.atr_period) + 2
+        self.warmup = max(self.channel, self.atr_period, self.trend_filter_ema) + 2
 
     def prepare(self, bars: Bars) -> FeatureBundle:
         import pandas as pd
@@ -182,12 +185,30 @@ class DonchianBreakoutStrategy:
         don_hi = hi.rolling(self.channel).max().shift(1).to_numpy()
         don_lo = lo.rolling(self.channel).min().shift(1).to_numpy()
         atr = indicators.atr(bars.high, bars.low, bars.close, self.atr_period)
+        extra = {"don_hi": don_hi, "don_lo": don_lo}
+        if self.trend_filter_ema > 0:
+            extra["trend_ema"] = indicators.ema(bars.close, self.trend_filter_ema)
         return FeatureBundle(
             ts=bars.ts, open=bars.open, high=bars.high, low=bars.low,
             close=bars.close, volume=bars.volume,
-            ema_fast=atr, ema_slow=atr, rsi=atr, atr=atr,
-            extra={"don_hi": don_hi, "don_lo": don_lo},
+            ema_fast=atr, ema_slow=atr, rsi=atr, atr=atr, extra=extra,
         )
+
+    def _make(self, side: Side, close: float, a: float, meta: dict) -> Optional[StrategyDecision]:
+        stop = close - self.atr_mult * a if side is Side.LONG else close + self.atr_mult * a
+        risk = abs(close - stop)
+        if risk <= 0:
+            return None
+        if self.exit_mode == "trail":
+            tp = float("inf") if side is Side.LONG else float("-inf")
+            trail = self.trail_atr_mult * a
+        else:
+            tp = (close + self.reward_multiple * risk if side is Side.LONG
+                  else close - self.reward_multiple * risk)
+            trail = None
+        label = "Breakout" if side is Side.LONG else "Breakdown"
+        return StrategyDecision(side, stop, tp, f"{label} ({self.channel}-bar)",
+                                meta, trail_distance=trail)
 
     def signal_at(self, fb: FeatureBundle, i: int) -> Optional[StrategyDecision]:
         if i < self.warmup - 1:
@@ -198,22 +219,17 @@ class DonchianBreakoutStrategy:
         close = fb.close[i]
         if np.isnan(hi) or np.isnan(lo) or np.isnan(a) or a <= 0:
             return None
-        meta = {"atr": round(float(a), 6), "don_hi": float(hi), "don_lo": float(lo)}
 
-        if close > hi:
-            stop = close - self.atr_mult * a
-            risk = close - stop
-            if risk <= 0:
-                return None
-            return StrategyDecision(Side.LONG, stop, close + self.reward_multiple * risk,
-                                    f"Breakout > {self.channel}-bar high", meta)
-        if self.allow_short and close < lo:
-            stop = close + self.atr_mult * a
-            risk = stop - close
-            if risk <= 0:
-                return None
-            return StrategyDecision(Side.SHORT, stop, close - self.reward_multiple * risk,
-                                    f"Breakdown < {self.channel}-bar low", meta)
+        trend_ema = fb.extra.get("trend_ema")
+        te = trend_ema[i] if trend_ema is not None else None
+        up_ok = te is None or (not np.isnan(te) and close > te)
+        down_ok = te is None or (not np.isnan(te) and close < te)
+
+        meta = {"atr": round(float(a), 6), "don_hi": float(hi), "don_lo": float(lo)}
+        if close > hi and up_ok:
+            return self._make(Side.LONG, close, a, meta)
+        if self.allow_short and close < lo and down_ok:
+            return self._make(Side.SHORT, close, a, meta)
         return None
 
     def evaluate(self, bars: Bars) -> Optional[StrategyDecision]:

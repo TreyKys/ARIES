@@ -158,6 +158,41 @@ pullback-entry logic is weak; next iterations should try a cleaner
 trend-following entry (e.g. Donchian/breakout) and then move to H3 (carry),
 which the literature supports as the stronger low-drawdown edge.
 
+## Findings v2 — trying to beat PF 1.6 (honest results)
+
+Attempts to raise the breakout's profit factor, tested in-sample (2024)
+then out-of-sample (2025), pooled across ETH/SOL/AVAX/LINK 4h:
+
+- **Trend filter (EMA-50): no effect.** A 55-bar breakout is already an
+  uptrend, so the filter is redundant. Null result, kept out.
+- **Trailing stops: helped in some configs but did NOT survive honest
+  parameter selection.** Tuning the trail distance on 2024 and testing on
+  2025 showed the in-sample best (5·ATR, PF 1.24) became an out-of-sample
+  loser (PF 0.75); a config that looked great OOS (2·ATR) was terrible
+  in-sample. The IS/OOS relationship was essentially noise -> classic
+  overfitting. **Conclusion: the directional breakout edge on these alts
+  is weak and fragile.** Do not trust a tuned directional PF.
+
+This is the empirical version of "statistical edges are unstable."
+Structural edges are not, because they don't predict anything:
+
+- **Carry is the robust edge.** Per-pair always-on carry: ETH 9.9%/yr,
+  LINK 9.9%, SOL 8.8%, AVAX 6.8% annualized, collecting *positive* funding
+  **71–91% of intervals**, max drawdown <1.5%. That is genuinely
+  "profits beat losses, consistently" — a structurally high profit factor.
+- **Diversifying carry across pairs** smooths the ride but (this period)
+  didn't raise yield — alt funding ≈ ETH funding.
+- **The one legitimate lever is leverage on the price-neutral carry:**
+  1x→10%/yr, 2x→19%, 3x→28%, 5x→46%. Real (funding-arb funds do this),
+  with bounded added risk (negative-funding stretches, basis/liquidation
+  on the short leg) — NOT the ruin risk of directional leverage.
+
+**Revised recommendation:** make the **multi-pair carry (optionally 2–3x)**
+the core engine — it is the real, robust "win more than lose" machine.
+Treat breakout as a small, *untuned* satellite with modest expectations,
+not the core. Do not parameter-tune the directional strategy into false
+confidence.
+
 ## Bottom line
 
 Can ARIES "beat the market"? Not by prediction. But a disciplined

@@ -38,6 +38,10 @@ class StrategyDecision:
     take_profit_price: float
     reason: str
     meta: dict = field(default_factory=dict)
+    # optional trailing stop: once set, the broker ratchets the stop to stay
+    # this far behind the best price reached. take_profit_price may be inf
+    # (no fixed target -> let the trail decide the exit).
+    trail_distance: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +63,8 @@ class Position:
     entry_ts: int
     risk_amount: float           # intended 1R in dollars, for R-multiple reporting
     entry_fee: float = 0.0
+    trail_distance: Optional[float] = None   # if set, stop ratchets behind best price
+    best_price: float = 0.0                  # high-water (long) / low-water (short) since entry
 
 
 @dataclass
