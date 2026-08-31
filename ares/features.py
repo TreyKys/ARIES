@@ -42,6 +42,12 @@ class FeatureBundle:
     ml_win_prob: Optional[np.ndarray] = None
     sentiment: Optional[np.ndarray] = None
     event_risk: Optional[np.ndarray] = None
+    # strategy-specific precomputed arrays (e.g. Donchian channels)
+    extra: dict = None
+
+    def __post_init__(self):
+        if self.extra is None:
+            self.extra = {}
 
     def __len__(self) -> int:
         return int(self.close.size)

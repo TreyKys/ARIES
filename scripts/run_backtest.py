@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from ares import datasource
 from ares.backtest import run_backtest
 from ares.risk import RiskConfig
-from ares.strategy import TrendPullbackStrategy
+from ares.strategy import DonchianBreakoutStrategy, TrendPullbackStrategy
 from ares.types import Costs
 
 
@@ -33,6 +33,8 @@ def main() -> int:
     p.add_argument("--candles", type=int, default=1500)
     p.add_argument("--csv", default="")
     p.add_argument("--capital", type=float, default=50.0)
+    p.add_argument("--strategy", choices=["trend", "breakout"], default="trend")
+    p.add_argument("--channel", type=int, default=20)
     p.add_argument("--allow-short", action="store_true")
     p.add_argument("--eval-edge", action="store_true",
                    help="disable drawdown/daily halts to measure raw strategy edge "
@@ -57,7 +59,10 @@ def main() -> int:
             return 1
         label = f"{args.symbol} {args.timeframe} ({len(candles)} candles)"
 
-    strategy = TrendPullbackStrategy(allow_short=args.allow_short)
+    if args.strategy == "breakout":
+        strategy = DonchianBreakoutStrategy(channel=args.channel, allow_short=args.allow_short)
+    else:
+        strategy = TrendPullbackStrategy(allow_short=args.allow_short)
     # Binance USDⓈ-M taker ~0.05%/side; model spread+slippage at 0.05%.
     costs = Costs(taker_fee=0.0005, maker_fee=0.0002, slippage=0.0005)
     rc = (RiskConfig(max_total_drawdown=10.0, max_daily_drawdown=10.0)
@@ -69,7 +74,7 @@ def main() -> int:
     m = result.metrics
     print("=" * 68)
     print(f"  ARES backtest  |  data: {label}")
-    print(f"  strategy: TrendPullback (short={'on' if args.allow_short else 'off'})"
+    print(f"  strategy: {type(strategy).__name__} (short={'on' if args.allow_short else 'off'})"
           f"  |  capital: ${args.capital:.2f}")
     print("=" * 68)
     print(f"  Trades ............. {m['n_trades']}")
