@@ -193,6 +193,31 @@ Treat breakout as a small, *untuned* satellite with modest expectations,
 not the core. Do not parameter-tune the directional strategy into false
 confidence.
 
+## League results (crypto + forex, 147 OOS backtests)
+
+`scripts/league.py` scores every strategy x pair x timeframe on 2025
+(out-of-sample), crypto and forex, with asset-appropriate costs. Robust
+aggregate findings (not cherry-picked single configs):
+
+- **Timeframe is the biggest lever: 4h is the edge zone** — 53% of 4h
+  configs profitable (median PF 1.01) vs 1h 24% (0.88); 1d too sparse.
+- **Crypto >> forex majors** — crypto 50% of configs profitable, forex
+  19%. FX majors are too efficient for this trend/breakout style, so the
+  original EUR/USD, GBP/JPY plan is the *weakest* ground.
+- **No strategy wins on a typical pair** (median PF ~0.9). Edge is
+  concentrated in specific names (SOL, ETH) on 4h -> trade a **curated
+  basket**, not everything.
+- **Standout OOS configs:** SOL 4h breakout PF ~1.9 (+0.43R, 80% positive
+  months), ETH 4h PF ~1.8 (80% positive months). Real candidates, but they
+  sit atop a roughly-breakeven distribution, so **walk-forward across
+  multiple periods is required before trusting** (single-period selection
+  bias).
+
+**Tuned configuration this points to:** 4h timeframe, crypto (ETH/SOL core,
+LINK/AVAX secondary), breakout family (fixed or trailing), as a curated
+basket layered on the carry core. Forex majors deprioritized. Full table:
+`data/league_results.csv`.
+
 ## Bottom line
 
 Can ARIES "beat the market"? Not by prediction. But a disciplined
