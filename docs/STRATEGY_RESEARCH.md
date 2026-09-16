@@ -218,6 +218,34 @@ LINK/AVAX secondary), breakout family (fixed or trailing), as a curated
 basket layered on the carry core. Forex majors deprioritized. Full table:
 `data/league_results.csv`.
 
+## Arbitrage battle-test (deep session)
+
+Built and stress-tested the arbitrage families on real data:
+
+- **Cross-exchange / triangular arb:** ruled out for a small account —
+  research and cost math agree it's an infrastructure race retail loses
+  (need >0.2% gaps just to clear fees; latency-dominated).
+- **Statistical arbitrage (pairs trading, `ares/statarb.py`):** real edge
+  exists (winning pairs OOS at PF 2–3.7, e.g. BNB/SOL 70% win) but it is
+  **weak and does not generalize**: strict cointegration selects ~nothing;
+  correlation selection gives 9/20 profitable but an equal-weight book only
+  ~3%/yr; picking winners by in-sample Sharpe FAILS out-of-sample
+  (+2–4%/yr); 1h loses to costs; BTC/ETH daily tops at PF 1.20 / Sharpe
+  0.41 (vs the literature's idealized 2.45). Kept as a minor diversifier.
+- **Dynamic funding rotation** (chase highest-funding perps): **worse than
+  static** (−80%/yr at 2x) — funding is ~uniform (~10%/yr across pairs), so
+  rotation adds only churn cost and buys crowded funding that reverts.
+- **Static multi-pair funding carry (basis arb), 2x:** **+16.5%/yr full
+  period at 0.81% max drawdown** — the most robust result across the entire
+  research program.
+
+**Conclusion:** the one arbitrage that genuinely works for this account is
+**funding/basis carry**. Everything fancier (stat-arb, rotation, ML,
+regime-switching) either helps at the margin or hurts. Compute is not the
+bottleneck (the 190-pair scan runs in seconds); market efficiency is.
+Deployable ARIES = static carry basket (core) + 4h crypto breakout basket
+(satellite); scale returns with capital, not complexity.
+
 ## Bottom line
 
 Can ARIES "beat the market"? Not by prediction. But a disciplined
