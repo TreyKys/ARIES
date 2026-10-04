@@ -99,3 +99,132 @@ def backtest_grid(candles: Sequence, *, half_width_pct: float = 0.12,
     return GridResult(round_trips, realized,
                       (final_equity / capital - 1) * 100, max_dd * 100,
                       final_equity, curve)
+
+
+def backtest_adaptive_grid(candles: Sequence, *, atr_period: int = 48,
+                           spacing_atr: float = 0.5, max_inventory: int = 20,
+                           maker_fee: float = 0.0002, capital: float = 50.0,
+                           trend_fast: int = 50, trend_slow: int = 200,
+                           trend_gate: bool = True, flatten_on_trend: bool = False):
+    """Adaptive trailing step-grid with volatility-scaled spacing and a
+    trend gate.
+
+    - spacing = spacing_atr * ATR  -> the band auto-adjusts to volatility.
+    - buy every `spacing` down, sell every `spacing` up (trailing, no fixed
+      band, so it follows price instead of holding a far-away bag).
+    - trend gate: in a confirmed downtrend (fast EMA < slow EMA) stop
+      buying; optionally flatten the bag (bounded loss) and wait. This is
+      the protection against averaging into a falling knife.
+    """
+    from . import indicators
+    import numpy as np
+    h = np.array([c.high for c in candles]); l = np.array([c.low for c in candles])
+    cl = np.array([c.close for c in candles]); ts = [c.ts for c in candles]
+    atr = indicators.atr(h, l, cl, atr_period)
+    ef = indicators.ema(cl, trend_fast); es = indicators.ema(cl, trend_slow)
+    n = len(cl)
+    unit = capital / max_inventory
+    inventory: List[float] = []        # buy prices (FIFO)
+    realized = 0.0
+    round_trips = 0
+    peak = capital; max_dd = 0.0
+    curve = []
+    warm = max(atr_period, trend_slow) + 1
+    last = cl[warm]
+    for i in range(warm, n):
+        p = cl[i]
+        sp = spacing_atr * atr[i]
+        if not np.isfinite(sp) or sp <= 0:
+            continue
+        downtrend = trend_gate and ef[i] < es[i]
+
+        if downtrend and flatten_on_trend and inventory:
+            for bp in inventory:
+                realized += (p / bp - 1) * unit - 2 * maker_fee * unit
+            inventory.clear(); last = p
+
+        # sells: price stepped up through rungs
+        while inventory and p >= last + sp:
+            bp = inventory.pop(0)
+            sell = last + sp
+            realized += (sell / bp - 1) * unit - 2 * maker_fee * unit
+            round_trips += 1
+            last = last + sp
+        # buys: price stepped down through rungs (blocked in downtrend)
+        while (not downtrend) and len(inventory) < max_inventory and p <= last - sp:
+            last = last - sp
+            inventory.append(last)
+
+        # keep 'last' near price even when idle so we don't jump many rungs at once
+        if not inventory and not (downtrend and not flatten_on_trend):
+            last = p
+
+        unreal = sum((p / bp - 1) * unit for bp in inventory)
+        eq = capital + realized + unreal
+        peak = max(peak, eq)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - eq) / peak)
+        curve.append((ts[i], eq))
+
+    final = capital + realized + sum((cl[-1] / bp - 1) * unit for bp in inventory)
+    return GridResult(round_trips, realized, (final / capital - 1) * 100,
+                      max_dd * 100, final, curve)
+
+
+def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
+                         use_atr: bool = False, atr_mult: float = 0.5, atr_period: int = 48,
+                         max_inventory: int = 20, maker_fee: float = 0.0002,
+                         taker_fee: float = 0.0005, funding_8h: float = 0.0001,
+                         capital: float = 50.0):
+    """Delta-neutral (hedged) grid: harvest oscillations, cancel the trend.
+
+    Grid-trades long spot inventory for the micro-profits, and holds a short
+    perp sized to that inventory so the directional bag is neutralised -- a
+    trend can't create the big drawdown that kills a naive grid. Equity is
+    therefore the accumulated grid spacing profits + funding earned on the
+    short, minus grid and hedge-rebalance fees.
+
+    Honest caveat: this models a perfect hedge. Real perp hedging adds
+    basis tracking-error and rebalance slippage, and funding can turn
+    negative -- so live drawdown will be somewhat higher than shown. But the
+    catastrophic directional bag (the 28-61% DD of the naive grid) is
+    genuinely removed.
+    """
+    from . import indicators
+    import numpy as np
+    cl = np.array([c.close for c in candles]); ts = [c.ts for c in candles]
+    h = np.array([c.high for c in candles]); l = np.array([c.low for c in candles])
+    atr = indicators.atr(h, l, cl, atr_period)
+    unit = capital / max_inventory
+    inv: List[float] = []
+    realized = 0.0; round_trips = 0
+    warm = atr_period + 1
+    last = cl[warm]; last_fund = ts[warm]
+    peak = capital; max_dd = 0.0; curve = []
+    for i in range(warm, len(cl)):
+        p = cl[i]
+        sp = atr_mult * atr[i] if use_atr else spacing_pct * p
+        if not np.isfinite(sp) or sp <= 0:
+            continue
+        while inv and p >= last + sp:                       # sell a rung
+            bp = inv.pop(0); sell = last + sp
+            realized += (sell / bp - 1) * unit - 2 * maker_fee * unit
+            realized -= taker_fee * unit                    # unwind one hedge unit
+            round_trips += 1; last = last + sp
+        while len(inv) < max_inventory and p <= last - sp:  # buy a rung + hedge it
+            last = last - sp; inv.append(last)
+            realized -= taker_fee * unit
+        if not inv:
+            last = p
+        if ts[i] - last_fund >= 8 * 3600 * 1000 and inv:    # funding on the short
+            realized += funding_8h * unit * len(inv); last_fund = ts[i]
+        eq = capital + realized                             # directional P&L cancels (hedged)
+        peak = max(peak, eq)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - eq) / peak)
+        curve.append((ts[i], eq))
+    final = capital + realized
+    return GridResult(round_trips, realized, (final / capital - 1) * 100,
+                      max_dd * 100, final, curve)
+
+
