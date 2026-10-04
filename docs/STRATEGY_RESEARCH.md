@@ -246,6 +246,23 @@ bottleneck (the 190-pair scan runs in seconds); market efficiency is.
 Deployable ARIES = static carry basket (core) + 4h crypto breakout basket
 (satellite); scale returns with capital, not complexity.
 
+## Grid trading battle-test (`ares/grid.py`)
+
+Tested the "many micro-hits in a sideways market" idea on real ETH 15m:
+
+- **Sideways 60-day window (1% drift): 1,367 round-trips, +6.1% (~37%/yr),
+  5.2% DD.** In a genuine range, grid trading works exactly as hoped.
+- **Full 18 months (trends + ranges), re-centered: -6.7%, 27% DD** — and
+  identical with fees set to zero, so it's a TREND problem, not a cost
+  problem. Trends leave the grid holding a losing bag that eats all the
+  range profits. A naive range-break stop made it worse (-31%, churn).
+
+Verdict: a legitimate range-harvester, but net profit depends entirely on
+running it only during ranges and halting during trends -- and reliable
+ahead-of-time regime detection is the same unsolved wall that sank the ADX
+filter. Keep as an optional calm-market satellite with strict limits, never
+core, and never leveraged (a leveraged grid bag is a liquidation).
+
 ## Bottom line
 
 Can ARIES "beat the market"? Not by prediction. But a disciplined
