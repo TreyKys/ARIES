@@ -175,7 +175,7 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
                          use_atr: bool = False, atr_mult: float = 0.5, atr_period: int = 48,
                          max_inventory: int = 20, maker_fee: float = 0.0002,
                          taker_fee: float = 0.0005, funding_8h: float = 0.0001,
-                         capital: float = 50.0):
+                         min_edge_mult: float = 2.0, capital: float = 50.0):
     """Delta-neutral (hedged) grid: harvest oscillations, cancel the trend.
 
     Grid-trades long spot inventory for the micro-profits, and holds a short
@@ -196,6 +196,8 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
     h = np.array([c.high for c in candles]); l = np.array([c.low for c in candles])
     atr = indicators.atr(h, l, cl, atr_period)
     unit = capital / max_inventory
+    roundtrip_cost = 2 * maker_fee + 2 * taker_fee          # grid + hedge, both sides
+    min_spacing_frac = min_edge_mult * roundtrip_cost       # floor so every rung clears fees
     inv: List[float] = []
     realized = 0.0; round_trips = 0
     warm = atr_period + 1
@@ -204,6 +206,7 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
     for i in range(warm, len(cl)):
         p = cl[i]
         sp = atr_mult * atr[i] if use_atr else spacing_pct * p
+        sp = max(sp, min_spacing_frac * p)                  # cost-aware floor
         if not np.isfinite(sp) or sp <= 0:
             continue
         while inv and p >= last + sp:                       # sell a rung
