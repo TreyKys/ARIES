@@ -1,22 +1,15 @@
-version: '3.8'
-
 services:
-  ares1-engine:
+  aries:
     build: .
-    container_name: ares1-engine
+    container_name: aries
     restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "8080:8080"
-    volumes:
-      - ares-data:/app/data_store
-    network_mode: host
+    env_file: .env
+    # Paper portfolio by default. Flip to real only after paper proves out.
+    command: >
+      python run_aries.py --live
+      --pairs ETHUSDT,SOLUSDT,LINKUSDT --tf 15m --capital 100
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "10m"
-        max-file: "3"
-
-volumes:
-  ares-data:
+        max-file: "5"
