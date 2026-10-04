@@ -175,7 +175,10 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
                          use_atr: bool = False, atr_mult: float = 0.7, atr_period: int = 48,
                          max_inventory: int = 20, maker_fee: float = 0.0002,
                          taker_fee: float = 0.0005, funding_8h: float = 0.0001,
-                         min_edge_mult: float = 2.0, capital: float = 50.0):
+                         min_edge_mult: float = 2.0, capital: float = 50.0,
+                         dynamic_hedge: bool = False, trend_fast: int = 50,
+                         trend_slow: int = 200, adx_min: float = 25.0,
+                         unhedged_ratio: float = 0.0):
     """Delta-neutral (hedged) grid: harvest oscillations, cancel the trend.
 
     Grid-trades long spot inventory for the micro-profits, and holds a short
@@ -195,13 +198,19 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
     cl = np.array([c.close for c in candles]); ts = [c.ts for c in candles]
     h = np.array([c.high for c in candles]); l = np.array([c.low for c in candles])
     atr = indicators.atr(h, l, cl, atr_period)
+    # Smart hedge: lift the hedge only in a CONFIRMED uptrend (ride the long
+    # inventory for extra profit); stay fully hedged otherwise -- especially
+    # in downtrends, where an unhedged long bag is the catastrophe we removed.
+    if dynamic_hedge:
+        ef = indicators.ema(cl, trend_fast); es = indicators.ema(cl, trend_slow)
+        adx = indicators.adx(h, l, cl, 14)
     unit = capital / max_inventory
     roundtrip_cost = 2 * maker_fee + 2 * taker_fee          # grid + hedge, both sides
     min_spacing_frac = min_edge_mult * roundtrip_cost       # floor so every rung clears fees
     inv: List[float] = []
-    realized = 0.0; round_trips = 0
+    realized = 0.0; round_trips = 0; directional = 0.0
     warm = atr_period + 1
-    last = cl[warm]; last_fund = ts[warm]
+    last = cl[warm]; last_fund = ts[warm]; prev_p = cl[warm]
     peak = capital; max_dd = 0.0; curve = []
     for i in range(warm, len(cl)):
         p = cl[i]
@@ -221,12 +230,22 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
             last = p
         if ts[i] - last_fund >= 8 * 3600 * 1000 and inv:    # funding on the short
             realized += funding_8h * unit * len(inv); last_fund = ts[i]
-        eq = capital + realized                             # directional P&L cancels (hedged)
+
+        # smart hedge: keep (1 - hedge_ratio) of the long inventory's directional
+        # move when an uptrend is confirmed; fully hedged (0) otherwise.
+        if dynamic_hedge and inv and prev_p > 0:
+            confident_up = (not np.isnan(ef[i]) and not np.isnan(es[i]) and not np.isnan(adx[i])
+                            and ef[i] > es[i] and adx[i] >= adx_min)
+            open_frac = 1.0 - unhedged_ratio if confident_up else 0.0
+            directional += open_frac * len(inv) * unit * (p / prev_p - 1.0)
+        prev_p = p
+
+        eq = capital + realized + directional
         peak = max(peak, eq)
         if peak > 0:
             max_dd = max(max_dd, (peak - eq) / peak)
         curve.append((ts[i], eq))
-    final = capital + realized
+    final = capital + realized + directional
     return GridResult(round_trips, realized, (final / capital - 1) * 100,
                       max_dd * 100, final, curve)
 

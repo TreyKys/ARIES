@@ -42,3 +42,18 @@ def test_hedged_grid_low_drawdown_vs_naive():
                              maker_fee=0.0, taker_fee=0.0, funding_8h=0.0, capital=50.0)
     assert r.round_trips > 0
     assert r.max_drawdown_pct < 5.0           # hedged -> no directional bag
+
+
+def test_dynamic_hedge_adds_directional_in_uptrend():
+    # steady uptrend: smart hedge (ride) should beat full hedge, both finite
+    import numpy as np
+    prices = list(100 * np.cumprod(1 + np.full(2000, 0.0005)))  # persistent uptrend
+    from ares.grid import backtest_hedged_grid
+    full = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
+                                maker_fee=0.0, taker_fee=0.0, funding_8h=0.0,
+                                dynamic_hedge=False, capital=100)
+    smart = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
+                                 maker_fee=0.0, taker_fee=0.0, funding_8h=0.0,
+                                 dynamic_hedge=True, trend_fast=20, trend_slow=50,
+                                 adx_min=0.0, unhedged_ratio=0.0, capital=100)
+    assert smart.net_return_pct >= full.net_return_pct
