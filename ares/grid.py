@@ -172,7 +172,7 @@ def backtest_adaptive_grid(candles: Sequence, *, atr_period: int = 48,
 
 
 def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
-                         use_atr: bool = False, atr_mult: float = 0.5, atr_period: int = 48,
+                         use_atr: bool = False, atr_mult: float = 0.7, atr_period: int = 48,
                          max_inventory: int = 20, maker_fee: float = 0.0002,
                          taker_fee: float = 0.0005, funding_8h: float = 0.0001,
                          min_edge_mult: float = 2.0, capital: float = 50.0):
