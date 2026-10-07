@@ -24,43 +24,77 @@ legs, and `tests/test_grid.py` pins the identity shut.
 (long spot + short perp, collecting funding). That needs spot AND perps in
 one account, so it is not prop-firm compatible. See docs/STRATEGY_RESEARCH.md.
 
-## 0. The one gate you must clear first: a reachable exchange
+## 0. The exchange gate is CLEARED: use OKX, not Binance
 
-Binance's trading/data API is **geo-blocked from many cloud IPs** (returns
-`HTTP 451`). Even *paper* mode needs the live price feed, so before anything
-runs on the VPS you must make the exchange reachable, via one of:
+Binance's trading API is geo-blocked from cloud IPs (`HTTP 451`), which blocked
+this whole phase. **OKX's public API answers normally from the same host** and
+serves everything the carry engine needs — spot price, perp price and the live
+funding rate — with no API key for read-only data. `ares/okx.py` wraps it.
 
-- an Oracle Cloud region that isn't blocked, or
-- a VPN / proxy on the VPS, or
-- an exchange whose API your VPS can actually reach.
-
-Verify from the VPS before deploying:
+Verify from the VPS:
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://fapi.binance.com/fapi/v1/time
-# 200 = reachable, 451 = blocked
+curl -s "https://www.okx.com/api/v5/public/time"            # OKX: works
+curl -s -o /dev/null -w "%{http_code}\n" \
+     https://fapi.binance.com/fapi/v1/time                  # Binance: 451
 ```
-The historical data vault (`data.binance.vision`) is NOT blocked, which is
-how backtests ran — but live trading needs the API itself.
+Funding-rate HISTORY still comes from `data.binance.vision` (not blocked), which
+is fine — that is backtest input, not live state.
 
-## 1. Paper run (no real money — do this for the 2 months first)
+## 1. What the paper run can and cannot tell you
+
+**It cannot validate the edge.** The standard error of a Sharpe ratio depends on
+elapsed YEARS, not on how many bars you collect; six weeks gives SE ~ +/-2.9,
+which is no information at all. Do not conclude anything about profitability
+from it, in either direction.
+
+**It verifies the things that actually break live**, which is why it is worth
+the six weeks:
+- both legs fill, and the hedge stays matched in size
+- basis tracking error is as small as the backtest assumes (currently ~3-7bp;
+  the engine logs it every poll)
+- funding is credited once per settlement window, not double-counted
+- the engine survives restarts, network drops and OKX rate limits
+- realised fees match the modelled 5bp/leg
+
+## 2. Paper run (no real money — do this for the 6 weeks first)
 
 ```bash
 git clone https://github.com/TreyKys/ARIES.git && cd ARIES
-cp .env.example .env        # fill SUPABASE_URL/KEY for the dashboard (optional)
+cp .env.example .env        # SUPABASE_URL/KEY for the dashboard (optional)
 docker compose up -d --build
 docker compose logs -f aries
 ```
-This runs the paper portfolio on live prices with simulated fills, reporting
-to your dashboard. Watch for ~2 weeks and confirm it tracks the backtest
-before risking anything.
 
-## 2. Validate without Docker (optional)
+## 3. Validate without Docker
 
 ```bash
 pip install -r requirements.txt
-# replay on history (works anywhere, no exchange needed):
-python run_aries.py --replay --pairs ETHUSDT,SOLUSDT,LINKUSDT --tf 15m --capital 100
+python scripts/fetch_funding_history.py ETHUSDT BTCUSDT     # real funding, 6.7yr
+python run_aries_carry.py --replay --pairs ETHUSDT,BTCUSDT --capital 50
+# -> $50 -> $136.95 (+16.10%/yr) at 2x leverage over 6.7yr
 ```
+
+## 4. What the numbers actually are
+
+Validated on 6.7 years of real Binance funding history, unlevered, single pair:
+
+| pair | return | max drawdown |
+|---|---|---|
+| ETHUSDT | +10.2%/yr | 1.07% |
+| BTCUSDT | +9.0%/yr | 1.42% |
+| SOLUSDT | +0.2%/yr | — (no carry; do not trade it) |
+
+Always-on beats every gating scheme tested. A `rate > 0` gate returned
+**+0.0%/yr with 36% drawdown** because fees consumed the entire carry. The
+engine's hysteresis default (exit below -3bp, re-enter above +0.5bp) was
+validated against the real series and is within noise of always-on.
+
+**The carry is decaying.** Gross by year on ETH: 2021 +37.5%, 2022 +0.8%,
+2023 +8.3%, 2024 +13.0%, 2025 +4.9%, 2026 +1.9%, with ~30% of 2026 intervals
+negative. At the time of writing ETH funding is **-4.0%/yr** (you would pay)
+and BTC **+1.2%/yr**. Plan for 2-5%/yr, not the long-run average. On $50 that
+is a few dollars a year — real, market-neutral, and small. The dollars scale
+with capital, not with the engine.
 
 ## 3. Going live (only after paper proves out)
 

@@ -4,15 +4,18 @@ services:
     container_name: aries
     restart: unless-stopped
     env_file: .env
-    # NOTE: the hedged-grid portfolio is NOT a validated strategy -- honestly
-    # marked it loses (-22%/yr, 36% DD). See the correction at the top of
-    # DEPLOY.md. This command is left as a PAPER-ONLY harness for collecting
-    # live data; do not read its P&L as an edge, and do not run it with real
-    # keys. The only validated neutral edge is funding carry
-    # (run_carry_engine.py), which needs spot+perp and is not prop-compatible.
+    # Delta-neutral funding carry on OKX, in PAPER mode. This is the only
+    # strategy in this repo that survived honest validation (6.7yr of real
+    # funding history). The previous default here ran the hedged grid, which
+    # an accounting bug made look profitable and which actually loses
+    # -22%/yr -- see the correction at the top of DEPLOY.md.
+    #
+    # Expect 2-5%/yr in the current funding regime, NOT the 6.7yr average,
+    # and expect negative-funding stretches. On $50 that is a few dollars a
+    # year: the point of this run is to verify plumbing, not to earn.
     command: >
-      python run_aries.py --live
-      --pairs ETHUSDT,SOLUSDT,LINKUSDT --tf 15m --capital 100
+      python run_aries_carry.py --live
+      --pairs ETHUSDT,BTCUSDT --capital 50 --leverage 2 --poll 300
     logging:
       driver: json-file
       options:
