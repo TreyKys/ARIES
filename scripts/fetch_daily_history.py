@@ -30,6 +30,20 @@ BASKET = {
     "HG=F": "COPPER", "ZC=F": "CORN", "ZS=F": "SOY", "ZW=F": "WHEAT",
     # rates / bonds
     "^TNX": "US10Y", "ZN=F": "UST10", "ZB=F": "UST30",
+    # --- breadth extension ---------------------------------------------------
+    # A real CTA runs 50-100+ markets. Added uncorrelated markets are pure
+    # diversification, the one improvement that is not a fitted parameter:
+    # portfolio Sharpe scales with sqrt(number of independent bets.)
+    "^FCHI": "CAC", "^STOXX50E": "SX5E", "^KS11": "KOSPI", "^TWII": "TWSE",
+    "^BSESN": "SENSEX", "^BVSP": "BOVESPA", "^MXX": "IPC", "^SSMI": "SMI",
+    "^AEX": "AEX", "^IBEX": "IBEX", "^OMX": "OMX", "^GSPTSE": "TSX",
+    "NZDUSD=X": "NZDUSD", "EURGBP=X": "EURGBP", "EURJPY=X": "EURJPY",
+    "GBPJPY=X": "GBPJPY", "AUDJPY=X": "AUDJPY", "SEK=X": "USDSEK",
+    "NOK=X": "USDNOK", "MXN=X": "USDMXN", "ZAR=X": "USDZAR",
+    "PL=F": "PLATINUM", "PA=F": "PALLADIUM", "CC=F": "COCOA", "KC=F": "COFFEE",
+    "SB=F": "SUGAR", "CT=F": "COTTON", "LE=F": "CATTLE", "HE=F": "HOGS",
+    "RB=F": "GASOLINE", "HO=F": "HEATOIL", "ZM=F": "SOYMEAL", "ZL=F": "SOYOIL",
+    "^FVX": "US5Y", "^TYX": "US30Y",
 }
 
 
