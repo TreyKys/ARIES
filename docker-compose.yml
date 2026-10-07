@@ -4,7 +4,12 @@ services:
     container_name: aries
     restart: unless-stopped
     env_file: .env
-    # Paper portfolio by default. Flip to real only after paper proves out.
+    # NOTE: the hedged-grid portfolio is NOT a validated strategy -- honestly
+    # marked it loses (-22%/yr, 36% DD). See the correction at the top of
+    # DEPLOY.md. This command is left as a PAPER-ONLY harness for collecting
+    # live data; do not read its P&L as an edge, and do not run it with real
+    # keys. The only validated neutral edge is funding carry
+    # (run_carry_engine.py), which needs spot+perp and is not prop-compatible.
     command: >
       python run_aries.py --live
       --pairs ETHUSDT,SOLUSDT,LINKUSDT --tf 15m --capital 100

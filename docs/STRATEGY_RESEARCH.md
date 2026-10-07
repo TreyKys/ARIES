@@ -293,3 +293,60 @@ higher-TF trend for growth, seasonality as a filter, ML only to sharpen —
 is a credible, evidence-based path to positive expectancy with controlled
 drawdown. The next concrete step is H1: does trend-following survive costs
 on higher timeframes? That we can answer this week, on real data.
+
+
+## Correction: the hedged grid was a phantom (supersedes all hedged-grid results)
+
+Every "hedged grid" return previously recorded here was produced by a model
+that booked the long leg's grid round trips but charged the short hedge only
+fees, never marking the hedge's P&L. That violates the P&L identity
+`price P&L = sum(position x dPrice)`: a delta-neutral book earns nothing from
+price movement.
+
+Proof (tests/test_grid.py::test_neutral_grid_cannot_harvest_oscillation): on a
+pure sine wave with ZERO fees -- the most grid-friendly market possible -- a
+fully hedged grid returns **-68%**, not a profit. The hedge is a mirror grid.
+
+### What is actually real (corrected two-leg model, IS/OOS split)
+
+Swept 21 prop-tradeable instruments (FX majors+crosses, metals, index futures,
+energy, bonds, crypto) x hedge_ratio {0,0.3,0.5,0.7} x spacing {0.5-8 sigma} x
+inventory {10,20,40}, config chosen on in-sample only:
+
+- **Every market selected hedge_ratio = 0.0.** Hedging destroys the grid.
+- FX majors: +0.0 to +1.5%/yr OOS at 0.3-1.6% DD. Edge is real and survives
+  OOS, but it is microscopic -- hourly FX vol is too small vs capital.
+- Index CFD/futures (US500/NAS100/US30/US2000): +5 to +11%/yr OOS, but
+  **6.5-8.2% max DD** -- breaches a 6% prop-firm limit.
+- Gold/Silver: IS +9.8/+16.7 -> OOS **-28.7/-52.9%** (26%/49% DD). Classic
+  unhedged-grid trend death. Reject.
+- WTI +7.2% OOS at 30.5% DD; COPPER +9.0% at 10.1% DD. Uninvestable.
+- ETHUSDT 15m: +51.3% OOS at **39.4% DD**.
+
+Nothing is simultaneously meaningful and inside a prop firm's drawdown limit.
+
+### Market ranking metric (kept -- this part was sound)
+
+For a diffusion, s-spacing crossings in time T scale as sigma^2*T/s^2, each
+earning (s - c). Maximising `(sigma^2*T/s^2)(s-c)` gives **s\* = 2c** (which
+independently validates min_edge_mult=2.0) and peak profit **∝ sigma^2/(4c)**.
+Grid return scales with volatility SQUARED over cost. Measured sigma/cost:
+WTI 15.4, Gold 13.8, Silver 10.6, NAS100 9.4, USDJPY 9.1 vs crypto perps 6.0 --
+prop markets are 2x better on cost efficiency. That is true but insufficient:
+a good sigma/c makes each hit profitable; absolute sigma decides whether the
+total is worth anything, and FX's is not.
+
+### Structural conclusion for the prop-firm goal
+
+A neutral book pays only carry, and carry requires *two different* instruments
+(so the legs' carries differ). Same-symbol long+short cancels it exactly --
+which is why the all-perp "low-leverage futures" variant cannot work: it is
+not that it loses half the return, it is that cancelling the carry leaves
+nothing but fees.
+
+The structurally sound carry source available inside ONE futures account is a
+**calendar spread** (long near expiry / short far expiry): different
+instruments, so the term-structure carry does NOT cancel, it is neutral to the
+underlying's price, and futures prop firms support it with spread margin.
+UNVALIDATED here -- it needs multi-expiry term-structure data, which the Yahoo
+feed does not provide cleanly.

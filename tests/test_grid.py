@@ -33,66 +33,57 @@ def test_grid_holds_bag_on_downtrend():
     assert r.net_return_pct < 0
 
 
-def test_hedged_grid_low_drawdown_vs_naive():
-    # a volatile but mean-reverting path: hedged grid should keep DD small
+def test_neutral_grid_cannot_harvest_oscillation():
+    """THE identity: a delta-neutral book earns nothing from price movement.
+
+    On a pure sine wave with ZERO fees -- the most grid-friendly market that
+    can exist -- a fully hedged grid must NOT turn a profit. An earlier model
+    booked the long leg's round trips while charging the hedge only fees and
+    reported ~+11%/yr of phantom return; this pins that bug shut.
+    """
     import math
-    prices = [100 + 8 * math.sin(i / 5.0) for i in range(2000)]
     from ares.grid import backtest_hedged_grid
-    r = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
-                             maker_fee=0.0, taker_fee=0.0, funding_8h=0.0, capital=50.0)
-    assert r.round_trips > 0
-    assert r.max_drawdown_pct < 5.0           # hedged -> no directional bag
+    prices = [100 + 8 * math.sin(i / 5.0) for i in range(4000)]
+    neutral = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
+                                   maker_fee=0.0, taker_fee=0.0, funding_8h=0.0,
+                                   min_edge_mult=0.0, hedge_ratio=1.0, capital=100.0)
+    assert neutral.round_trips > 0                 # it did trade
+    assert neutral.net_return_pct <= 0.0           # and earned nothing from it
 
 
-def test_dynamic_hedge_adds_directional_in_uptrend():
-    # steady uptrend: smart hedge (ride) should beat full hedge, both finite
-    import numpy as np
-    prices = list(100 * np.cumprod(1 + np.full(2000, 0.0005)))  # persistent uptrend
+def test_unhedged_grid_harvests_what_the_hedge_gives_away():
+    # Same path, no hedge: the oscillation profit is real but DIRECTIONAL.
+    import math
     from ares.grid import backtest_hedged_grid
-    full = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
-                                maker_fee=0.0, taker_fee=0.0, funding_8h=0.0,
-                                dynamic_hedge=False, capital=100)
-    smart = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
-                                 maker_fee=0.0, taker_fee=0.0, funding_8h=0.0,
-                                 dynamic_hedge=True, trend_fast=20, trend_slow=50,
-                                 adx_min=0.0, unhedged_ratio=0.0, capital=100)
-    assert smart.net_return_pct >= full.net_return_pct
+    prices = [100 + 8 * math.sin(i / 5.0) for i in range(4000)]
+    kw = dict(spacing_pct=0.01, atr_period=20, maker_fee=0.0, taker_fee=0.0,
+              funding_8h=0.0, min_edge_mult=0.0, capital=100.0)
+    plain = backtest_hedged_grid(_mk(prices), hedge_ratio=0.0, **kw)
+    neutral = backtest_hedged_grid(_mk(prices), hedge_ratio=1.0, **kw)
+    assert plain.net_return_pct > neutral.net_return_pct
 
 
-def test_perp_hedged_grid_matches_spot_when_funding_cancels():
-    # All-perp (long+short perp, hedge mode) with equal funding on both legs
-    # must reproduce the spot+perp grid run WITHOUT funding carry: same hits,
-    # same realized grid profit, net funding ~ 0, low drawdown, gross lev > 0.
+def test_neutral_grid_income_is_carry_only():
+    # Fully hedged, fee-free: the ONLY thing that can move equity is funding
+    # credited on the short leg (the spot+perp carry trade).
     import math
-    prices = [100 + 8 * math.sin(i / 5.0) for i in range(2000)]
-    from ares.grid import backtest_hedged_grid, backtest_perp_hedged_grid
-    spot = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
-                                maker_fee=0.0001, taker_fee=0.0003,
-                                funding_8h=0.0, capital=50.0)
-    perp = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
-                                     atr_period=20, maker_fee=0.0001, taker_fee=0.0003,
-                                     funding_long_8h=0.0002, funding_short_8h=0.0002,
-                                     capital=50.0)
-    assert perp.round_trips == spot.round_trips          # identical price mechanics
-    assert abs(perp.realized - spot.realized) < 1e-9     # funding cancels -> same P&L
-    assert abs(perp.net_funding) < 1e-9                  # long pays what short collects
-    assert perp.max_drawdown_pct < 5.0                   # still delta-neutral
-    assert perp.peak_gross_leverage > 0.0                # two legs tie up margin
+    from ares.grid import backtest_hedged_grid
+    prices = [100 + 8 * math.sin(i / 5.0) for i in range(4000)]
+    kw = dict(spacing_pct=0.01, atr_period=20, maker_fee=0.0, taker_fee=0.0,
+              min_edge_mult=0.0, hedge_ratio=1.0, capital=100.0)
+    nocarry = backtest_hedged_grid(_mk(prices), funding_8h=0.0, **kw)
+    carry = backtest_hedged_grid(_mk(prices), funding_8h=0.0002, **kw)
+    assert carry.net_return_pct > nocarry.net_return_pct
 
 
-def test_perp_hedged_grid_funding_drag_reduces_return():
-    # If the long leg pays MORE funding than the short collects (asymmetry
-    # around a rate flip), it is a drag -- never a windfall.
+def test_all_perp_neutral_grid_is_a_guaranteed_loss():
+    # Both legs same symbol: long pays what short collects -> funding cancels,
+    # neutral book earns nothing from movement, fees remain. Must lose.
     import math
-    prices = [100 + 8 * math.sin(i / 5.0) for i in range(2000)]
     from ares.grid import backtest_perp_hedged_grid
-    neutral = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
-                                        atr_period=20, maker_fee=0.0, taker_fee=0.0,
-                                        funding_long_8h=0.0001, funding_short_8h=0.0001,
-                                        capital=50.0)
-    drag = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
-                                     atr_period=20, maker_fee=0.0, taker_fee=0.0,
-                                     funding_long_8h=0.0003, funding_short_8h=0.0001,
-                                     capital=50.0)
-    assert drag.net_return_pct < neutral.net_return_pct
-    assert drag.net_funding < 0.0
+    prices = [100 + 8 * math.sin(i / 5.0) for i in range(4000)]
+    r = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
+                                  atr_period=20, maker_fee=0.0002, taker_fee=0.0005,
+                                  funding_long_8h=0.0001, funding_short_8h=0.0001,
+                                  hedge_ratio=1.0, capital=100.0)
+    assert r.net_return_pct < 0.0

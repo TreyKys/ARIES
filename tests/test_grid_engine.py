@@ -24,15 +24,29 @@ def test_engine_harvests_and_stays_low_dd():
     for c in _mk(prices):
         eng.step(c)
     assert eng.round_trips > 0
-    assert eng.max_dd < 0.05          # hedged -> tiny drawdown
+    # The hedge does NOT make drawdown vanish. It neutralises direction and
+    # takes the oscillation profit with it, and rebalancing a hedge against a
+    # grid shorts low / covers high, which is itself a real cost. Asserting a
+    # tiny DD here is what hid a phantom-profit bug; assert it is finite and
+    # that equity is honestly marked instead.
+    assert eng.max_dd >= 0.0
+    eq = eng.capital + eng.realized
+    assert eq == eq                   # finite, not NaN
 
 
-def test_engine_matches_backtest_direction():
-    # sanity: positive realized on a clean oscillation
+def test_engine_neutral_cannot_beat_unhedged_on_oscillation():
+    """Live engine must obey the same identity as the backtest: a neutral
+    book cannot harvest movement, so hedge_ratio=0 must beat hedge_ratio=1
+    on a clean oscillation. Guards the phantom-profit regression."""
     import math
     prices = [100 + 5 * math.sin(i / 8.0) for i in range(2000)]
-    eng = HedgedGridEngine("TEST", capital=50.0, atr_period=20, atr_mult=0.4,
-                           maker_fee=0.0, taker_fee=0.0, funding_8h=0.0)
-    for c in _mk(prices):
-        eng.step(c)
-    assert eng.realized >= 0
+    def run(h):
+        eng = HedgedGridEngine("TEST", capital=50.0, atr_period=20, atr_mult=0.4,
+                               maker_fee=0.0, taker_fee=0.0, funding_8h=0.0,
+                               hedge_ratio=h)
+        for c in _mk(prices):
+            eng.step(c)
+        return eng
+    plain, neutral = run(0.0), run(1.0)
+    assert plain.round_trips > 0
+    assert plain.realized > neutral.realized

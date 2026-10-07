@@ -1,8 +1,28 @@
 # Deploying ARES for the 2-month run
 
-The engine is a **market-neutral hedged-grid portfolio** across ETH/SOL/LINK.
-Backtest (real 18mo, $100): ~22%/yr at ~2% max drawdown. Dollars scale with
-capital, not with the engine.
+## !! CORRECTION: the hedged grid does not work. Do not deploy it. !!
+
+An earlier version of this file claimed the hedged-grid portfolio made
+~22%/yr at ~2% max drawdown. That was a **modelling bug**, now fixed. The
+backtest booked the long grid leg's round-trip profits while charging the
+short hedge only fees -- it never marked the hedge's own P&L.
+
+The identity it violated: for any book, price P&L = sum(position x dPrice).
+A book held delta-neutral earns **nothing** from price movement, only carry.
+The short hedge is a mirror-image grid that shorts as price falls and covers
+as it rises, giving back exactly what the long grid earns.
+
+Honestly marked, the same 18-month ETH/SOL/LINK run is:
+
+    $100 -> $68.34  (-22.4%/yr), max drawdown 36.45%, 3614 hits
+
+Fees alone (3614 hits x 14bps x $5 unit ~ $25) plus hedge-rebalance drag
+account for the loss. `ares/grid.py` and `ares/grid_engine.py` now mark both
+legs, and `tests/test_grid.py` pins the identity shut.
+
+**The only validated market-neutral edge in this repo is funding carry**
+(long spot + short perp, collecting funding). That needs spot AND perps in
+one account, so it is not prop-firm compatible. See docs/STRATEGY_RESEARCH.md.
 
 ## 0. The one gate you must clear first: a reachable exchange
 
