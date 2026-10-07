@@ -64,7 +64,11 @@ def main() -> int:
         return 1
     rows.sort(key=lambda x: x[0])
 
-    out = f"data/{symbol}_{tf}.csv"
+    # Market MUST be part of the filename. Writing both spot and perp to
+    # data/{symbol}_{tf}.csv silently overwrites one with the other, which
+    # would corrupt every basis (perp - spot) calculation downstream.
+    suffix = "" if market == "spot" else "_perp"
+    out = f"data/{symbol}{suffix}_{tf}.csv"
     import os
     os.makedirs("data", exist_ok=True)
     with open(out, "w", newline="") as f:
