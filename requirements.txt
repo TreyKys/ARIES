@@ -25,3 +25,4 @@ google-genai>=0.3.0
 # --- Dev ---
 pytest>=8.0.0
 scikit-learn>=1.4.0
+xlrd>=2.0.1

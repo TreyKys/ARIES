@@ -350,3 +350,73 @@ instruments, so the term-structure carry does NOT cancel, it is neutral to the
 underlying's price, and futures prop firms support it with spread margin.
 UNVALIDATED here -- it needs multi-expiry term-structure data, which the Yahoo
 feed does not provide cleanly.
+
+## Calendar-spread carry: VALIDATED AND REJECTED
+
+The previous section named the futures calendar spread as the one structurally
+sound carry source inside a single prop account, and flagged it unvalidated for
+want of term-structure data. That data was found and the hypothesis was tested.
+
+### Data
+
+`scripts/fetch_term_structure.py` pulls EIA daily settlements for the nearest
+four NYMEX contracts, keyless: WTI crude `RCLC1..4` (1985-2024, 9,158 rows) and
+natural gas `RNGC1..4` (1994-2024, 7,149 rows). Yahoo is useless here -- dated
+contracts (`CLZ25.NYM`) 404 once expired, so no history exists.
+
+### Pre-specified hypothesis (not fitted)
+
+With F(T) the price at time-to-maturity T: in backwardation F decreases in T, so
+an ageing contract rolls UP, and the front leg -- steepest local slope -- rolls
+fastest, so long-front/short-back gains. Contango reverses it. Hence
+`position = sign(C1 - C2)`, fixed in advance.
+
+### The trap this had to avoid
+
+EIA C1..C4 are CONTINUOUS: at expiry C1 is relabelled and jumps by about
+-(C1-C2), i.e. almost exactly MINUS the signal. Attributing P&L to that jump
+manufactures an edge perfectly correlated with the signal. Measured: mean |daily
+spread return| is 0.22% on normal days but 1.72% on day 20 of the month -- an 8x
+spike across the CL roll window. Roll days are therefore taken from the
+deterministic exchange expiry calendar (never from return size, which would be
+snooping): 3.48x higher |r| on rule-flagged days, 21 of the 40 largest moves
+flagged. A difference is treated as contaminated if EITHER endpoint is a roll
+day -- excluding only the roll day itself leaks the jump into the next day's
+diff, which alone was enough to turn a flat test panel into -99.98%/yr.
+`tests/test_calspread.py` pins this: flat legs plus artificial roll jumps must
+return EXACTLY zero fee-free.
+
+### Result: the hypothesis fails
+
+IS = first 60%, OOS = remainder (14yr for WTI, 11yr for NG). Cost 4bps
+round-trip, conservative for CL at a prop firm.
+
+| market | spread | IS ret | OOS ret | OOS Sharpe | OOS maxDD |
+|---|---|---|---|---|---|
+| WTI | C1-C2 | -2.28% | +1.72% | +0.15 | 25.7% |
+| WTI | C1-C3 | +1.39% | +1.70% | +0.15 | 34.6% |
+| WTI | C1-C4 | +4.73% | +1.60% | +0.15 | 38.0% |
+| NG  | C1-C2 | -20.75% | **-7.33%** | -0.44 | 68.3% |
+| NG  | C1-C4 | -25.67% | **-8.53%** | -0.37 | 77.2% |
+
+Placebos (WTI OOS): inverted signal -16 to -19%/yr, random signal -10.3%/yr
+(30 seeds, best -0.84%). So the WTI carry sign **does** carry real information --
+it beats random by ~12pp/yr and inverting it loses systematically more than
+random. That part of the theory is correct.
+
+But it is unusable:
+- WTI Sharpe +0.15 is noise-level, at 26-38% max drawdown. A 6% prop-firm
+  drawdown limit is breached many times over.
+- **Natural gas runs the hypothesis BACKWARDS** (OOS -7 to -9%; inverted is
+  positive). NG term structure is dominated by winter/summer seasonality, so
+  sign(slope) reads seasonality rather than carry. The a priori economics does
+  not generalise across markets, and trading NG inverted would be fitting the
+  market where the theory already failed.
+- Sizing by carry magnitude instead of sign (pre-specified variant, one run, no
+  search): WTI OOS improves to +5.26%/yr but Sharpe only +0.23 at 38% DD, and
+  its IS turns negative -- IS/OOS disagree, so there is no stable edge.
+
+**Verdict: rejected.** Real but noise-level information in WTI, sign-unstable
+across markets, drawdown an order of magnitude past prop-firm limits. Nothing
+here is tradeable, and no further tuning was attempted -- searching until a
+number looks good is exactly what produced the phantom hedged grid.
