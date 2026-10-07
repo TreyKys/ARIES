@@ -517,3 +517,79 @@ surviving the funded account is. Modern DD/vol is ~2.8x, so a 6% ongoing limit
 implies running at ~2% vol, i.e. ~1%/yr. Whether that is viable depends entirely
 on whether the firm's loss floor LOCKS at breakeven once in profit. Verify that
 before anything else.
+
+## Quarterly-vs-perp carry: prop-compatible, and NEGATIVE since 2024
+
+The structural problem with funding carry on a prop account is that it needs
+long spot + short perp, and prop firms provide no spot. A dated (quarterly)
+future pays no funding while a perp does, so **long quarterly + short perp** is
+delta-neutral AND funding-collecting with both legs as derivatives in ONE
+account. That solves prop-compatibility without spot.
+
+Edge = annualised perp funding - annualised quarterly premium. (The quarterly's
+own premium converges to zero by expiry, so holding it long is a cost.)
+
+Measured over 44 dated Binance contracts, 2021-2026, BTC and ETH
+(`scripts/fetch_quarterly.py`, `scripts/measure_quarterly_spread.py`).
+
+**Partial data was misleading.** 2021-2022 alone read +5.91%; through 2023,
++4.51%. The full series reverses it. The edge has been negative for **eight
+consecutive contracts in BOTH markets**, beginning at the same expiry:
+
+| expiry | BTC edge | ETH edge |
+|---|---|---|
+| 240927 | -4.58% | -3.28% |
+| 241227 | -3.45% | -1.71% |
+| 250328 | -1.80% | -0.86% |
+| 250627 | -2.94% | -2.43% |
+| 250926 | -1.41% | -1.04% |
+| 251226 | -0.96% | -0.90% |
+| 260327 | -2.11% | -1.91% |
+| 260626 | -1.90% | -2.23% |
+| **mean** | **-2.39%** | **-1.80%** |
+
+Two independent markets flipping at the same contract is structural, not noise,
+and the cause is identifiable: spot Bitcoin ETFs launched in January 2024 and
+brought institutional basis-trade demand, bidding dated-futures premiums up
+relative to perp funding. The quarterly premium now exceeds the funding, so the
+trade pays out more than it collects.
+
+The headline means (+1.73% BTC, +2.85% ETH) are entirely driven by 2021-2024
+and must NOT be read as a forward expectation. Forward expectation is about
+-2%/yr before fees. **Rejected.**
+
+Economic reason it was always going to be thin: perp funding and dated basis
+both price the same leveraged-long demand, so they track closely and their
+spread is only a residual. Plain spot+perp collects the FULL funding (+4.32%/yr
+in 2022) where quarterly+perp collects only the gap (+1.35%).
+
+## The prop-account survival problem: solved for survival, capped for earning
+
+Sizing risk in proportion to the distance from the account's kill line
+(`scripts/test_floor_sizing.py`) removes ruin entirely -- 0 deaths in 4,000
+bootstrapped 3-year paths at k<=1.0, while still touching a 10% profit target
+56% of the time. But it does not create return: a loss shrinks position size,
+which slows recovery, so survival is paid for out of the return (median falls
+to ~0%/yr).
+
+The cap is arithmetic, and simulation matches it:
+
+    sustainable return ~= edge_quality * room / bad_streak_multiple
+                        = 0.49 * 6% / 2.5 = 1.2%/yr
+
+against 1.15% measured at the size where only 0.4% of accounts die. Earning
+10%/yr under a 6% rule would require Sharpe ~4; nothing directional reaches
+that, and the only thing measured here that does is market-neutral carry
+(~3.5), which needs the spot leg prop firms do not offer. That is the whole
+reason the constraint binds.
+
+**Percentage is the wrong unit.** 1.2%/yr is near-useless as a rate but the
+dollars follow the capital: at the safe size, roughly $265/yr on a $25k
+account, $441 on $50k, $882 on $150k and $1,323 on $300k after a 90% split --
+against $9.80/yr from trading $50 of own capital at full risk (19.6%/yr, a far
+better rate, 50-130x less money).
+
+**Unresolved and decisive:** prop account fees run roughly $85-105/month, i.e.
+$1,000-1,200/yr, which EXCEEDS the earnings on a $25k or $50k account. This is
+only viable on a larger account and only if the fee is a one-time activation
+rather than recurring. Verify the fee schedule before buying anything.
