@@ -31,6 +31,7 @@ from .ledger import Ledger, Stats, summarise
 LOOKBACK = 252          # 12 months, per the literature
 VOL_WINDOW = 60         # 3 months, for the risk estimate
 REBALANCE_DAYS = 21     # monthly
+TARGET_MARKETS = 24     # universe size the risk budget is calibrated to
 
 
 def build_panel(names: Sequence[str], folder: str = "data/daily") -> pd.DataFrame:
@@ -40,6 +41,14 @@ def build_panel(names: Sequence[str], folder: str = "data/daily") -> pd.DataFram
         d = pd.read_csv(f"{folder}/{n}.csv")
         s = pd.Series(d["close"].values,
                       index=pd.to_datetime(d["ts"], unit="ms")).sort_index()
+        # Yahoo stamps each market at its own LOCAL session time (SPX 14:30,
+        # FX elsewhere). Aligning on raw timestamps builds a union index with
+        # roughly one row per market per day -- 26,742 rows for 3 markets
+        # instead of ~14,000 -- and forward-fills each market across the
+        # others' stamps, manufacturing runs of identical prices. Those became
+        # zero-return days that collapsed the rolling vol and blew up 1/vol
+        # position sizing. Normalise to the calendar date first.
+        s.index = s.index.normalize()
         cols[n] = s[~s.index.duplicated(keep="last")]
     px = pd.DataFrame(cols).sort_index()
     return px.ffill()
@@ -49,56 +58,96 @@ def run_tsmom(px: pd.DataFrame, *, capital: float = 100_000.0,
               risk_budget: float = 0.02, cost_bps: float = 10.0,
               lookback: int = LOOKBACK, vol_window: int = VOL_WINDOW,
               rebalance_days: int = REBALANCE_DAYS,
-              signal: str = "momentum",
+              signal: str = "momentum", vol_floor: float = 0.04,
+              max_notional_frac: float = 0.50,
               rng: Optional[np.random.Generator] = None) -> Ledger:
     """Trade the basket and return the LEDGER, so P&L is auditable.
 
     risk_budget: target annualised vol contribution per market, as a fraction
       of capital. Dollar position = risk_budget * capital / vol_market, so a
       20%-vol market gets a 10% position at a 2% budget.
+    vol_floor: minimum annualised vol used for sizing. Guards against
+      forward-filled holidays collapsing the risk estimate.
+    max_notional_frac: hard cap on any single market's notional.
     signal: 'momentum' (the rule), 'random' or 'inverted' (placebo controls).
     """
     rets = px.pct_change()
-    vol = rets.rolling(vol_window).std() * np.sqrt(252)
-    trail = px / px.shift(lookback) - 1.0
+    # Holidays are forward-filled so calendars align, which creates runs of
+    # IDENTICAL prices. Those produce exact-zero returns, which drag the rolling
+    # vol toward zero, which makes 1/vol position sizing explode -- UST10 showed
+    # 0.4%/yr vol implying a 246x leverage multiplier. A filled holiday is not
+    # an observation of zero volatility, so mask exact zeros out of the risk
+    # estimate. Genuine zero-return days are rare at daily resolution, and
+    # dropping them biases vol slightly UP, i.e. toward smaller positions.
+    rets_for_vol = rets.where(rets != 0.0)
+    vol_df = (rets_for_vol.rolling(vol_window, min_periods=vol_window // 2)
+              .std() * np.sqrt(252))
+    vol_df = vol_df.clip(lower=vol_floor)
+    trail_df = px / px.shift(lookback) - 1.0
+
+    # Hoist everything into numpy: pandas scalar access inside a 14,000-day
+    # loop over 24 markets dominates the runtime by orders of magnitude.
+    cols = list(px.columns)
+    P = px.to_numpy(dtype=float)
+    V = vol_df.to_numpy(dtype=float)
+    T = trail_df.to_numpy(dtype=float)
+    # Unit-safe: this index is datetime64[ms], NOT nanoseconds, so dividing by
+    # 1e6 destroys it. Cast to a known resolution before going to int.
+    stamps = px.index.astype("datetime64[ms]").astype("int64").to_numpy()
 
     led = Ledger(capital)
-    dates = px.index
     start = max(lookback, vol_window) + 1
     g = rng or np.random.default_rng(0)
     cost_rate = cost_bps / 1e4
+    budget = risk_budget * capital
+    n_mkt = len(cols)
+    target = np.zeros(n_mkt)
 
-    target: Dict[str, float] = {}
-    for i in range(start, len(dates)):
-        t = dates[i]
-        ts = int(t.value // 1_000_000)
-        row = px.iloc[i]
+    for i in range(start, len(stamps)):
+        ts = int(stamps[i])
+        prow, vrow, trow = P[i], V[i], T[i]
 
         if (i - start) % rebalance_days == 0:
-            for m in px.columns:
-                p, v, tr = row[m], vol[m].iloc[i], trail[m].iloc[i]
-                if not np.isfinite(p) or not np.isfinite(v) or not np.isfinite(tr) \
-                        or v <= 0 or p <= 0:
-                    target[m] = 0.0
-                    continue
-                if signal == "momentum":
-                    s = 1.0 if tr > 0 else -1.0
-                elif signal == "inverted":
-                    s = -1.0 if tr > 0 else 1.0
-                elif signal == "random":
-                    s = float(g.choice([-1.0, 1.0]))
-                else:
-                    raise ValueError(signal)
-                target[m] = s * (risk_budget * capital) / (v * p)
-            for m, tgt in target.items():
-                cur = led.pos.get(m, 0.0)
-                dq = tgt - cur
-                p = row[m]
-                if abs(dq) > 1e-12 and np.isfinite(p) and p > 0:
-                    led.trade(ts, m, dq, float(p), cost=abs(dq) * float(p) * cost_rate)
+            live = np.isfinite(prow) & np.isfinite(vrow) & np.isfinite(trow) \
+                & (vrow > 0) & (prow > 0)
+            if signal == "momentum":
+                sgn = np.where(trow > 0, 1.0, -1.0)
+            elif signal == "inverted":
+                sgn = np.where(trow > 0, -1.0, 1.0)
+            elif signal == "random":
+                sgn = g.choice([-1.0, 1.0], size=n_mkt)
+            else:
+                raise ValueError(signal)
+            # Scale the per-market budget by universe size. Markets phase in
+            # as their history begins (1 live in 1970, 24 by 2026); a fixed
+            # per-market budget would therefore make portfolio risk grow
+            # mechanically over time (measured vol 3.6% -> 17.5%) and make
+            # sub-period comparison meaningless. 1/sqrt(n) keeps aggregate
+            # risk roughly constant, which is standard practice, not a fit.
+            n_live = max(int(live.sum()), 1)
+            scaled = budget * np.sqrt(TARGET_MARKETS / n_live)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                tgt = sgn * scaled / (vrow * prow)
+                # hard per-market notional cap: a risk limit any real system
+                # has, and a backstop against a bad vol estimate
+                cap = (max_notional_frac * capital) / prow
+                tgt = np.clip(tgt, -cap, cap)
+            target = np.where(live, tgt, 0.0)
+            for j in range(n_mkt):
+                cur = led.pos.get(cols[j], 0.0)
+                dq = target[j] - cur
+                if abs(dq) > 1e-12 and live[j]:
+                    p = float(prow[j])
+                    led.trade(ts, cols[j], float(dq), p,
+                              cost=abs(dq) * p * cost_rate)
 
-        led.mark(ts, {m: float(row[m]) for m in px.columns
-                      if np.isfinite(row[m]) and row[m] > 0})
+        eq = led.mark(ts, {cols[j]: float(prow[j]) for j in range(n_mkt)
+                           if np.isfinite(prow[j]) and prow[j] > 0})
+        if eq <= 0:
+            # Ruin. A real account is liquidated here; continuing produces
+            # meaningless returns on negative equity (the inverted placebo
+            # reported -100%/yr at 549% vol by running past this point).
+            break
     return led
 
 

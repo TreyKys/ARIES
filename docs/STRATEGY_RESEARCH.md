@@ -420,3 +420,100 @@ But it is unusable:
 across markets, drawdown an order of magnitude past prop-firm limits. Nothing
 here is tradeable, and no further tuning was attempted -- searching until a
 number looks good is exactly what produced the phantom hedged grid.
+
+## Time-series momentum: the first properly-powered test in this project
+
+### The statistical correction that invalidates everything above
+
+The standard error of a Sharpe ratio is `sqrt((1+S^2/2)/T)` where **T is elapsed
+YEARS, not bar count**. Sharpe uncertainty is driven by uncertainty in the mean
+return, which shrinks with calendar time, not sampling frequency. A year of
+15-minute candles is exactly as uninformative about an edge as a year of daily
+candles.
+
+Consequence: every intraday result earlier in this document was underpowered by
+construction, independent of the modelling bugs. The index-grid "Sharpe 0.77"
+had a standard error of **+/-1.23** (95% CI [-1.64, +3.17], t=0.63) on 0.86
+years of OOS data -- statistically indistinguishable from zero. Establishing
+Sharpe 0.77 at t=2 needs ~6.8 years; we had 0.86. An 8x shortfall.
+
+Corollary: **a 1.5-month paper run cannot validate anything** (SE ~ +/-2.9). It
+verifies plumbing -- fills, hedge integrity, costs, uptime -- and nothing more.
+
+### Method
+
+`ares/ledger.py` (one audited P&L core, equity = cash + sum(position*price), no
+code path that adds profit) + `ares/tsmom.py` (published Moskowitz/Ooi/Pedersen
+rule: 12-month lookback, monthly rebalance, constant-vol sizing -- parameters
+from the literature, nothing fitted) + `scripts/fetch_daily_history.py`
+(20-57yr daily, 24 markets across equities/FX/commodities/rates).
+
+Data-handling bugs found and fixed, each of which produced garbage:
+- Yahoo `range=max` silently downgrades the interval (169 rows for 42yr of SPX);
+  explicit period1/period2 is required.
+- Yahoo stamps each market at its own local session time, so aligning on raw
+  timestamps built a union index of 26,742 rows for 3 markets instead of
+  ~14,000, forward-filling each across the others' stamps. The resulting runs of
+  identical prices became zero-return days that collapsed the rolling vol and
+  made 1/vol sizing explode (UST10 showed 0.4%/yr vol => 246x leverage).
+  Normalising to the calendar date fixed it.
+- The index is `datetime64[ms]`, not nanoseconds; dividing by 1e6 destroyed the
+  time axis (56 years read as 0.02 days).
+
+### Result
+
+| window | Sharpe | t | note |
+|---|---|---|---|
+| 1970-2026 | +0.64 +/-0.15 | 4.34 | **confounded, see below** |
+| **2000-2026 (full universe)** | **+0.42 +/-0.21** | **2.06** | the honest number |
+| equities sleeve | +0.69 +/-0.15 | 4.62 | inflated by the same confound |
+| FX sleeve | +0.12 +/-0.19 | 0.62 | not significant |
+| commodities sleeve | +0.27 +/-0.20 | 1.35 | not significant |
+| rates sleeve | +0.06 +/-0.20 | 0.29 | not significant |
+
+The 56-year headline is **not** a clean diversified result. Risk is normalised
+by `sqrt(24/n_live)` so aggregate risk stays constant as markets phase in, but
+that gives the 1970s -- when only SPX had history -- 4.9x position size, so the
+long sample is dominated by leveraged single-market S&P trend following. Adding
+the 8 commodity markets changes the full-period figures not at all, which is the
+tell. **Treat Sharpe ~0.42 (t=2.06, 26yr) as the estimate**, marginally
+significant.
+
+Placebos (full period): inverted signal reaches **ruin in 9.1 years**; random
+signal -87.6%/yr, Sharpe -0.22 over 8 seeds. The signal direction is decisively
+real. Costs: survives to 40bps round-trip (Sharpe 0.47 full / 0.42 at 10bps).
+
+Sub-periods confirm the documented decay: 1990-2000 Sharpe 1.03, 2000-2010 0.62,
+**2010-2020 Sharpe 0.04 at -1.08%/yr with a 53% drawdown**, 2020-2027 0.55.
+
+### Known limitation, not yet addressed
+
+Tested on cash indices and spot FX, not futures. For equities and FX the proxy
+is defensible (financing roughly offsets). For **commodities it is materially
+wrong** -- futures returns include roll yield that spot does not capture -- so
+the commodity sleeve's +0.27 is not trustworthy. A proper test needs
+roll-adjusted continuous futures.
+
+### Prop-evaluation odds (10% target / 6% max DD, real TSMOM return shape)
+
+10k Monte Carlo paths, 3-year cap, block-bootstrapped from modern-era daily
+returns so fat tails and skew (-0.32) are preserved:
+
+| assumed Sharpe | vol 3% | vol 6% | vol 10% |
+|---|---|---|---|
+| 0.64 (full-period) | 8% / 8% | 44% / **82%** | 37% / 63% |
+| 0.30 (decay haircut) | 1% / 1% | 26% / 41% | 27% / 48% |
+| 0.04 (2010s repeat) | 0% / 0% | 14% / 21% | 21% / 36% |
+
+(trailing drawdown / static drawdown)
+
+Two findings worth more than the strategy: **a static drawdown rule nearly
+doubles the pass probability versus a trailing one at identical Sharpe** (82% vs
+44%), and under a static rule ~6% vol beats 10%. Choosing the firm by its
+drawdown mechanics matters more than improving the signal.
+
+Unresolved and decisive before paying any fee: passing is not the goal,
+surviving the funded account is. Modern DD/vol is ~2.8x, so a 6% ongoing limit
+implies running at ~2% vol, i.e. ~1%/yr. Whether that is viable depends entirely
+on whether the firm's loss floor LOCKS at breakeven once in profit. Verify that
+before anything else.
