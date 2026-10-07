@@ -35,6 +35,17 @@ REBALANCE_DAYS = 21
 
 def signal_matrix(px: pd.DataFrame, kind: str) -> pd.DataFrame:
     """Target weight per market in [-1, 1]; NaN where not yet tradeable."""
+    if kind == "multimom":
+        # Blend momentum across horizons rather than betting the whole signal on
+        # one lookback. Standard in the literature (a 12-month lookback is an
+        # arbitrary single point on a continuum) and it costs nothing extra to
+        # hold, since the positions net before trading.
+        hs = (21, 63, 126, 252)
+        acc = None
+        for h in hs:
+            sg = np.sign(px / px.shift(h) - 1.0)
+            acc = sg if acc is None else acc + sg
+        return (acc / float(len(hs))).where(~px.shift(max(hs)).isna())
     if kind == "tsmom":
         tr = px / px.shift(252) - 1.0
         return np.sign(tr)
@@ -63,7 +74,10 @@ def run_factor(px: pd.DataFrame, kinds: Sequence[str], *,
                cost_bps: float = 10.0, vol_floor: float = 0.04,
                max_notional_frac: float = 0.50,
                target_markets: int = 24,
-               rebalance_days: int = REBALANCE_DAYS) -> Ledger:
+               rebalance_days: int = REBALANCE_DAYS,
+               vol_target: float = 0.0,
+               vol_target_window: int = 60,
+               vol_scale_cap: float = 2.0) -> Ledger:
     """Equal-weight blend of `kinds`, rebalanced monthly, marked daily."""
     rets = px.pct_change()
     # Holidays are forward-filled so calendars align, creating runs of identical
@@ -88,6 +102,8 @@ def run_factor(px: pd.DataFrame, kinds: Sequence[str], *,
     start = 253
     cost_rate = cost_bps / 1e4
     n = len(cols)
+    own_rets: List[float] = []
+    prev_eq: Optional[float] = None
 
     for i in range(start, len(stamps)):
         ts = int(stamps[i])
@@ -96,6 +112,17 @@ def run_factor(px: pd.DataFrame, kinds: Sequence[str], *,
             live = ok & np.isfinite(prow) & np.isfinite(vrow) & (vrow > 0) & (prow > 0)
             n_live = max(int(live.sum()), 1)
             scaled = risk_budget * capital * np.sqrt(target_markets / n_live)
+            if vol_target > 0 and len(own_rets) >= vol_target_window // 2:
+                # Volatility management (Moreira & Muir 2017): scale exposure
+                # inversely to the strategy's OWN recent realised volatility.
+                # Uses only past returns, and is capped so a quiet stretch
+                # cannot talk the book into unbounded size.
+                w = own_rets[-vol_target_window:]
+                mu = sum(w) / len(w)
+                sd = (sum((x - mu) ** 2 for x in w) / max(len(w) - 1, 1)) ** 0.5
+                rv = sd * np.sqrt(252)
+                if rv > 1e-9:
+                    scaled *= float(min(vol_target / rv, vol_scale_cap))
             with np.errstate(invalid="ignore", divide="ignore"):
                 tgt = wrow * scaled / (vrow * prow)
                 cap = (max_notional_frac * capital) / prow
@@ -108,6 +135,9 @@ def run_factor(px: pd.DataFrame, kinds: Sequence[str], *,
                     led.trade(ts, cols[j], float(dq), p, cost=abs(dq) * p * cost_rate)
         eq = led.mark(ts, {cols[j]: float(prow[j]) for j in range(n)
                            if np.isfinite(prow[j]) and prow[j] > 0})
+        if prev_eq and prev_eq > 0:
+            own_rets.append(eq / prev_eq - 1.0)
+        prev_eq = eq
         if eq <= 0:
             break
     return led
