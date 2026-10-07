@@ -57,3 +57,42 @@ def test_dynamic_hedge_adds_directional_in_uptrend():
                                  dynamic_hedge=True, trend_fast=20, trend_slow=50,
                                  adx_min=0.0, unhedged_ratio=0.0, capital=100)
     assert smart.net_return_pct >= full.net_return_pct
+
+
+def test_perp_hedged_grid_matches_spot_when_funding_cancels():
+    # All-perp (long+short perp, hedge mode) with equal funding on both legs
+    # must reproduce the spot+perp grid run WITHOUT funding carry: same hits,
+    # same realized grid profit, net funding ~ 0, low drawdown, gross lev > 0.
+    import math
+    prices = [100 + 8 * math.sin(i / 5.0) for i in range(2000)]
+    from ares.grid import backtest_hedged_grid, backtest_perp_hedged_grid
+    spot = backtest_hedged_grid(_mk(prices), spacing_pct=0.01, atr_period=20,
+                                maker_fee=0.0001, taker_fee=0.0003,
+                                funding_8h=0.0, capital=50.0)
+    perp = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
+                                     atr_period=20, maker_fee=0.0001, taker_fee=0.0003,
+                                     funding_long_8h=0.0002, funding_short_8h=0.0002,
+                                     capital=50.0)
+    assert perp.round_trips == spot.round_trips          # identical price mechanics
+    assert abs(perp.realized - spot.realized) < 1e-9     # funding cancels -> same P&L
+    assert abs(perp.net_funding) < 1e-9                  # long pays what short collects
+    assert perp.max_drawdown_pct < 5.0                   # still delta-neutral
+    assert perp.peak_gross_leverage > 0.0                # two legs tie up margin
+
+
+def test_perp_hedged_grid_funding_drag_reduces_return():
+    # If the long leg pays MORE funding than the short collects (asymmetry
+    # around a rate flip), it is a drag -- never a windfall.
+    import math
+    prices = [100 + 8 * math.sin(i / 5.0) for i in range(2000)]
+    from ares.grid import backtest_perp_hedged_grid
+    neutral = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
+                                        atr_period=20, maker_fee=0.0, taker_fee=0.0,
+                                        funding_long_8h=0.0001, funding_short_8h=0.0001,
+                                        capital=50.0)
+    drag = backtest_perp_hedged_grid(_mk(prices), use_atr=False, spacing_pct=0.01,
+                                     atr_period=20, maker_fee=0.0, taker_fee=0.0,
+                                     funding_long_8h=0.0003, funding_short_8h=0.0001,
+                                     capital=50.0)
+    assert drag.net_return_pct < neutral.net_return_pct
+    assert drag.net_funding < 0.0

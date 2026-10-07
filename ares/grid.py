@@ -250,3 +250,101 @@ def backtest_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
                       max_dd * 100, final, curve)
 
 
+@dataclass
+class PerpGridResult(GridResult):
+    peak_gross_leverage: float = 0.0    # max (long+short notional)/capital seen
+    net_funding: float = 0.0            # cumulative funding (long pays, short collects)
+
+
+def backtest_perp_hedged_grid(candles: Sequence, *, spacing_pct: float = 0.005,
+                              use_atr: bool = True, atr_mult: float = 0.7, atr_period: int = 48,
+                              max_inventory: int = 20, maker_fee: float = 0.0002,
+                              taker_fee: float = 0.0005,
+                              funding_long_8h: float = 0.0001,
+                              funding_short_8h: float = 0.0001,
+                              min_edge_mult: float = 2.0, capital: float = 50.0,
+                              leverage: float = 3.0) -> PerpGridResult:
+    """Prop-firm-compatible hedged grid: BOTH legs are perps in ONE account.
+
+    This is the user's futures idea. A prop firm gives a single derivatives
+    account -- no spot -- so the spot-long leg of the delta-neutral grid is
+    replaced by a LOW-LEVERAGE LONG PERP, held alongside the SHORT PERP hedge
+    in the same symbol (exchange hedge mode, e.g. Bybit / HyroTrader).
+
+    What stays identical to the spot+perp version:
+      - price-tracking: a perp tracks spot via funding, so every grid
+        round-trip prints the same spacing profit, and the short hedge
+        neutralises direction exactly as before. Net exposure ~ 0.
+
+    What changes (modelled honestly here):
+      1. Funding is no longer a tailwind. The long perp PAYS funding when
+         funding is positive; the short perp COLLECTS it. Same symbol, same
+         rate, same size -> they CANCEL (net ~ 0). The spot+perp version got
+         to KEEP the short's funding as free carry; the all-perp version
+         gives that back. That is the entire economic cost of going
+         prop-compatible.
+      2. Leverage. Holding long + short notional ties up margin on both legs;
+         low leverage keeps liquidation far away. Because net exposure is ~0,
+         a price move can't liquidate a correctly-hedged book -- the risk is
+         the brief window where inventory out-paces the hedge. `leverage`
+         here is only used to report peak gross notional vs. the account, so
+         you can size it under the prop firm's cap. It does NOT multiply
+         returns: the hedge is protection, not a multiplier.
+
+    Honest caveat (same as the spot version, plus one): perfect-hedge model,
+    so real basis tracking-error and rebalance slippage raise live drawdown;
+    AND funding can be asymmetric for a few hours around rate flips, a small
+    drag not a disaster. Set funding_long_8h != funding_short_8h to stress it.
+    """
+    from . import indicators
+    import numpy as np
+    cl = np.array([c.close for c in candles]); ts = [c.ts for c in candles]
+    h = np.array([c.high for c in candles]); l = np.array([c.low for c in candles])
+    atr = indicators.atr(h, l, cl, atr_period)
+    unit = capital / max_inventory
+    roundtrip_cost = 2 * maker_fee + 2 * taker_fee
+    min_spacing_frac = min_edge_mult * roundtrip_cost
+    inv: List[float] = []
+    realized = 0.0; round_trips = 0; net_funding = 0.0
+    warm = atr_period + 1
+    last = cl[warm]; last_fund = ts[warm]
+    peak = capital; max_dd = 0.0; curve = []
+    peak_gross_lev = 0.0
+    for i in range(warm, len(cl)):
+        p = cl[i]
+        sp = atr_mult * atr[i] if use_atr else spacing_pct * p
+        sp = max(sp, min_spacing_frac * p)
+        if not np.isfinite(sp) or sp <= 0:
+            continue
+        while inv and p >= last + sp:                       # sell a long rung
+            bp = inv.pop(0); sell = last + sp
+            realized += (sell / bp - 1) * unit - 2 * maker_fee * unit
+            realized -= taker_fee * unit                    # unwind one hedge unit
+            round_trips += 1; last = last + sp
+        while len(inv) < max_inventory and p <= last - sp:  # buy a long rung + add hedge
+            last = last - sp; inv.append(last)
+            realized -= taker_fee * unit
+        if not inv:
+            last = p
+        if ts[i] - last_fund >= 8 * 3600 * 1000 and inv:    # funding on BOTH legs
+            pay = funding_long_8h * unit * len(inv)         # long perp pays
+            collect = funding_short_8h * unit * len(inv)    # short perp collects
+            net_funding += collect - pay
+            realized += collect - pay
+            last_fund = ts[i]
+        # gross notional = long inventory + matched short hedge
+        gross = 2.0 * len(inv) * unit
+        if capital > 0:
+            peak_gross_lev = max(peak_gross_lev, gross / capital)
+
+        eq = capital + realized                             # net-neutral: no directional term
+        peak = max(peak, eq)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - eq) / peak)
+        curve.append((ts[i], eq))
+    final = capital + realized
+    return PerpGridResult(round_trips, realized, (final / capital - 1) * 100,
+                          max_dd * 100, final, curve,
+                          peak_gross_leverage=peak_gross_lev, net_funding=net_funding)
+
+
