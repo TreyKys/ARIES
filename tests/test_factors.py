@@ -40,9 +40,21 @@ def test_factor_blend_runs_through_the_ledger_and_marks_honestly():
                                               for k, q in led.pos.items() if q))) < 1e-6
 
 
-def test_no_single_market_exceeds_the_notional_cap():
+def test_no_single_market_exceeds_the_notional_cap_at_trade_time():
+    """The cap is enforced when sizing a trade, not continuously.
+
+    Checking the FINAL mark instead fails spuriously: after a rebalance the
+    price keeps moving, so a position sized inside the cap drifts above it
+    until the next rebalance. Replay the fills and assert the cap held at the
+    moment each position was set.
+    """
     px = _panel({"A": 0.0008, "B": -0.0006})
+    cap_frac = 0.25
     led = run_factor(px, ["tsmom"], capital=100_000.0, target_markets=2,
-                     max_notional_frac=0.25)
-    for k, q in led.pos.items():
-        assert abs(q) * led.last_px[k] <= 0.25 * 100_000.0 * 1.01
+                     max_notional_frac=cap_frac)
+    assert led.fills
+    held = {}
+    for f in led.fills:
+        held[f.instrument] = held.get(f.instrument, 0.0) + f.qty
+        notional = abs(held[f.instrument]) * f.price
+        assert notional <= cap_frac * 100_000.0 * 1.001
