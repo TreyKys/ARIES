@@ -150,12 +150,17 @@ def breakeven_from(r: ReversalResult) -> float:
     This is the number that decides viability -- compare it against what can
     actually be traded (taker ~10bp round trip, maker ~2bp, VIP maker ~0).
     """
-    if r.n_rebalances == 0 or r.turnover_per_rebalance <= 0:
+    if r.n_rebalances == 0 or r.turnover_per_rebalance <= 0 or r.bets_per_year <= 0:
         return 0.0
-    turns_per_year = r.turnover_per_rebalance * r.bets_per_year
-    if turns_per_year <= 0:
+    gross_mult = 1.0 + r.gross_return_pct / 100.0
+    if gross_mult <= 0:
         return 0.0
-    return ((r.gross_return_pct / 100.0) / turns_per_year) * 1e4
+    # Compare like with like, PER BET. Dividing the COMPOUNDED annual rate by
+    # SIMPLE annual turnover overstated this ~3x (3.99bp where the truth is
+    # 1.36bp) and contradicted the module's own net-of-cost result, which came
+    # out at -58.4%/yr for a configuration the breakeven called tradeable.
+    edge_per_bet = gross_mult ** (1.0 / r.bets_per_year) - 1.0
+    return (edge_per_bet / r.turnover_per_rebalance) * 1e4
 
 
 def breakeven_cost_bps(px: pd.DataFrame, **kw) -> float:

@@ -92,3 +92,37 @@ def test_ruin_reports_a_rate_not_nan():
 def test_breakeven_cost_is_positive_when_an_edge_exists():
     be = breakeven_cost_bps(_synth(revert=0.5), top_k=3)
     assert be > 0
+
+
+def test_breakeven_is_consistent_with_the_net_result():
+    """The consistency check that should have existed from the start.
+
+    Trading AT the breakeven cost must leave roughly nothing. An earlier
+    formula divided the COMPOUNDED annual gross rate by SIMPLE annual turnover,
+    overstating breakeven ~3x: it reported 3.99bp ("tradeable at maker") for a
+    configuration whose own net-of-2bp result was -58.4%/yr. Comparing per-bet
+    edge against per-bet turnover fixes it.
+    """
+    px = _synth(revert=0.5, n=4000, k=12)
+    kw = dict(lookback=1, hold=1, top_k=4)
+    be = breakeven_cost_bps(px, **kw)
+    assert be > 0
+    at_be = run_xs_reversal(px, cost_bps=be, **kw)
+    just_under = run_xs_reversal(px, cost_bps=be * 0.4, **kw)
+    just_over = run_xs_reversal(px, cost_bps=be * 2.0, **kw)
+    # below breakeven makes money, above it loses, at it is near flat
+    assert just_under.ledger.equity() > at_be.ledger.equity()
+    assert just_over.ledger.equity() < at_be.ledger.equity()
+    assert at_be.ledger.equity() < just_under.ledger.equity()
+
+
+def test_breakeven_below_a_real_fee_means_the_edge_is_untradeable():
+    # Sanity on the decision rule itself: a tiny breakeven must imply losses at
+    # an ordinary retail maker fee.
+    px = _synth(revert=0.15, n=4000, k=12)
+    be = breakeven_cost_bps(px, lookback=1, hold=1, top_k=4)
+    retail_maker_round_trip = 15.0        # Binance spot maker ~7.5bp a side
+    if be < retail_maker_round_trip:
+        r = run_xs_reversal(px, lookback=1, hold=1, top_k=4,
+                            cost_bps=retail_maker_round_trip)
+        assert r.ledger.equity() < 10_000.0

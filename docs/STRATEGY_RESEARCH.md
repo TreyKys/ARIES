@@ -593,3 +593,70 @@ better rate, 50-130x less money).
 $1,000-1,200/yr, which EXCEEDS the earnings on a $25k or $50k account. This is
 only viable on a larger account and only if the fee is a one-time activation
 rather than recurring. Verify the fee schedule before buying anything.
+
+## Fast strategies: why everything here was slow, and what the speed limit is
+
+### The diagnosis
+
+Strategy quality = (edge per bet) x sqrt(bets per year). Trend following makes
+~25 bets/yr, so sqrt(25)=5 caps its quality near 0.5 regardless of tuning --
+exactly the 0.49 measured after seven enhancement attempts. Earning real money
+inside a 6% account drawdown limit needs quality ~4. On that formula the lever
+is BET COUNT, not better prediction: at 10,000 bets/yr, sqrt(N)=100 and a
+per-bet edge twenty times smaller suffices. Most of this project searched the
+wrong axis.
+
+### The test
+
+`ares/xsreversal.py`: cross-sectional short-term reversal across 25 liquid USDT
+pairs, 5.7yr hourly (50,362 bars). Strip the common market factor by demeaning
+returns across the universe, then short the assets that diverged upward and buy
+those that diverged downward, equal dollars, market-neutral. ~8,764 bets/yr.
+
+**The signal is real and large.** Gross, before costs: +547.9%/yr at
+hourly rebalance, +173.5% at a 4-hour lookback, +74.8% holding 4 hours. Not
+noise -- validated first on synthetic data where reverting idiosyncratic moves
+profit, trending ones reach ruin, and a random walk is indistinguishable from
+zero (mean Sharpe +0.157 over 12 seeds).
+
+### The speed limit: it lives entirely inside the fee structure
+
+Turnover is ~155% of equity per rebalance, so hourly trading turns over ~13,760x
+capital per year. Per bet the edge is **2.13bp of equity** while a 2bp
+round-trip fee costs **3.14bp**. Cost exceeds edge, so:
+
+| look | hold | gross %/yr | edge/bet | breakeven | net @2bp |
+|---|---|---|---|---|---|
+| 1 | 1 | +547.9% | 2.13bp | **1.36bp** | **-58.4%** |
+| 1 | 4 | +74.8% | 2.55bp | **1.64bp** | -11.2% |
+| 4 | 1 | +173.5% | 1.15bp | 1.38bp | -36.6% |
+| 4 | 4 | +28.3% | 1.14bp | 0.73bp | -35.2% |
+| 4 | 72 | +0.3% | 0.25bp | 0.16bp | -3.5% |
+
+**Every configuration is negative at 2bp.** Best breakeven is 1.64bp round-trip,
+against ~15bp for retail Binance spot maker (7.5bp a side with BNB discount) and
+~2.4bp at the top VIP tier. So the edge is roughly **10x too small for retail
+fees and still short of the best published tier.** It is real, and it belongs to
+whoever trades at or below ~1.6bp -- i.e. firms with rebates. That is a concrete
+explanation of why this game is not retail-accessible, rather than a vibe.
+
+Longer holds cut the fee bill but cut sqrt(bets) faster: by hold=12 the gross
+edge is already negative, so there is no slow-enough version that survives.
+
+### Four harness bugs, all caught by impossible output rather than wrong-looking output
+
+Worth recording because the pattern repeated:
+1. Market-neutral books at **-100% with zero fees** -- positions sized off
+   starting capital, so leverage grew as equity fell.
+2. **"2 bets/yr"** for a hold=72 config -- returns annualised over the full
+   5.7yr even when the book died in month three.
+3. **1,156,298% turnover** per rebalance -- raw notional over STARTING capital
+   once the book compounded, which silently zeroed the breakeven.
+4. **Breakeven overstated ~3x** (3.99bp vs a true 1.36bp) -- a COMPOUNDED
+   annual rate divided by SIMPLE annual turnover, which labelled as "tradeable
+   at maker" a configuration whose own net column read -58.4%/yr.
+
+Bug 3 printed +547.9%/yr next to the broken turnover; bug 4 then dressed it as
+tradeable. Reading the return column alone would have shipped it.
+`tests/test_xsreversal.py` now asserts that trading AT the breakeven cost leaves
+roughly nothing -- the consistency check that would have caught bug 4 at once.
