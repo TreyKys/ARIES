@@ -64,6 +64,7 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
     n = len(cols)
     traded_notional = 0.0
     rebalances = 0
+    last_ts = int(stamps[lookback]) if len(stamps) > lookback else 0
 
     for i in range(lookback, len(stamps)):
         ts = int(stamps[i])
@@ -80,7 +81,14 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
             k = min(top_k, len(valid) // 2)
             longs = valid[:k]            # fell most vs the basket -> buy
             shorts = valid[-k:]          # rose most vs the basket -> short
-            per = (capital / (2 * k)) if k else 0.0
+            # Size off CURRENT equity, not the starting capital. Sizing off
+            # starting capital holds notional fixed while equity falls, so
+            # effective leverage grows as you lose -- a death spiral that
+            # manufactured -100% results even with zero fees.
+            equity_now = led.equity() if led.curve else capital
+            if equity_now <= 0:
+                break
+            per = (equity_now / (2 * k)) if k else 0.0
             target = {c: 0.0 for c in cols}
             for j in longs:
                 target[cols[j]] = per / row[j]
@@ -99,12 +107,17 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
             rebalances += 1
         marks = {cols[j]: float(row[j]) for j in range(n)
                  if np.isfinite(row[j]) and row[j] > 0}
+        last_ts = ts
         if marks:
             eq = led.mark(ts, marks)
             if eq <= 0:
                 break
 
-    span_yr = (stamps[-1] - stamps[0]) / 86_400_000 / 365.25
+    # Annualise over the span ACTUALLY traded. Using the full panel span after
+    # an early break spread a ruin loss across 5.7 years and divided the bet
+    # count by the wrong period, which is what produced "2 bets/yr" for a
+    # configuration that rebalances every 72 bars.
+    span_yr = (last_ts - stamps[lookback]) / 86_400_000 / 365.25
     eq0, eq1 = capital, led.equity()
     # Guard ruin: a book that goes to zero or negative has no meaningful
     # annualised rate, and ** on a negative base yields NaN rather than failing
