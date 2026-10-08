@@ -25,3 +25,9 @@ models/
 
 # live trading state written by ares/monitor.py (account data, not source)
 state/
+
+# npm (root manifest exists only for the Netlify functions)
+node_modules/
+
+# produced by the Netlify build command, not source
+dashboard/monitor/

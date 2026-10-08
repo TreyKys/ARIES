@@ -51,6 +51,7 @@ from ares.combined import (MIN_VIABLE_CAPITAL, CapitalTooSmall, check_viable,
                            combined_signal, size_positions)
 from ares.ledger import Ledger, summarise
 from ares.monitor import Monitor
+from ares.publish import Publisher
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("aries.futures")
@@ -95,7 +96,9 @@ def load_history(folder="data/daily"):
 def run_replay(capital, target_vol, w_trend, top_k, monitor=True):
     px = load_history()
     check_viable(capital, list(px.columns))
-    mon = Monitor(strategy="combined", capital=capital) if monitor else None
+    pub = Publisher()
+    mon = (Monitor(strategy="combined", capital=capital, publisher=pub)
+           if monitor else None)
     if mon:
         mon.mode = "replay"
         mon.connected = True
@@ -163,9 +166,16 @@ def run_replay(capital, target_vol, w_trend, top_k, monitor=True):
                 f"{s.sharpe:+.2f}, maxDD {s.max_drawdown_pct:.1f}%",
                 ts=ts)
         mon.connected = False
-        mon.flush()
-        log.info("  dashboard state -> state/dashboard.json "
+        # A replay is history, not a live run, so it uploads once at the end
+        # rather than on every one of the hundreds of in-loop flushes.
+        mon.flush(publish=False)
+        mon.flush(force_publish=True)
+        log.info("  monitor state -> state/dashboard.json "
                  "(serve with: python scripts/serve_dashboard.py)")
+        if pub.enabled:
+            log.info("  published to %s", pub.url)
+        else:
+            log.info("  not published (%s); local only", pub.why_disabled())
     log.info("=" * 66)
     log.info("  combined book replay | $%.0f capital, %.0f%% vol target",
              capital, target_vol * 100)
@@ -206,8 +216,14 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
             "IB_PORT=7496 is the LIVE trading port. This runner refuses it "
             "unless you pass --allow-live. Use 7497 for the paper account.")
 
-    mon = Monitor(strategy=strategy, capital=capital)
+    pub = Publisher()
+    mon = Monitor(strategy=strategy, capital=capital, publisher=pub)
     mon.mode = "live" if port == 7496 else "paper"
+    if pub.enabled:
+        log.info("publishing to %s", pub.url)
+    else:
+        log.info("not publishing (%s); the monitor is local only at "
+                 "http://127.0.0.1:8787/monitor/", pub.why_disabled())
     mon.log("INFO", "SYSTEM",
             f"start {mon.mode}, ${capital:,.0f}, strategy={strategy}, "
             f"submit={'ON' if submit else 'OFF'}")
@@ -330,7 +346,9 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
         raise
     finally:
         mon.connected = False
-        mon.flush()
+        # force: the page must show "offline" promptly when the bot stops,
+        # otherwise a dead bot looks like a quiet one.
+        mon.flush(force_publish=True)
         ib.disconnect()
 
 

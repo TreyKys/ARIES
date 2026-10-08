@@ -45,7 +45,8 @@ class Monitor:
     """Collects state and writes it atomically for the dashboard to read."""
 
     def __init__(self, path: str = "state/dashboard.json",
-                 strategy: str = "combined", capital: float = 0.0):
+                 strategy: str = "combined", capital: float = 0.0,
+                 publisher=None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.strategy = strategy
@@ -60,6 +61,11 @@ class Monitor:
         self.connected = False
         self.last_error: Optional[str] = None
         self.mode = "paper"
+        # Optional callable(snapshot) -> error string or None. Used to push the
+        # snapshot to the hosted page (see ares/publish.py). It is a plain
+        # callable so the monitor has no opinion about where state goes.
+        self.publisher = publisher
+        self._last_publish_error: Optional[str] = None
 
     # --- recording ---------------------------------------------------------
 
@@ -141,9 +147,35 @@ class Monitor:
             "curve": self.curve,
         }
 
-    def flush(self) -> None:
-        """Atomic write so the dashboard never reads a half-written file."""
-        data = json.dumps(self.snapshot(), separators=(",", ":"))
+    def flush(self, publish: bool = True, force_publish: bool = False
+               ) -> None:
+        """Atomic write so the dashboard never reads a half-written file.
+
+        Writes locally FIRST, then publishes. The local file is the record of
+        record; a failed upload must never cost us the local copy.
+        """
+        snap = self.snapshot()
+        self._write(json.dumps(snap, separators=(",", ":")))
+        if publish and self.publisher is not None:
+            try:
+                err = (self.publisher(snap, force=True) if force_publish
+                       else self.publisher(snap))
+            except TypeError:
+                err = self.publisher(snap)
+            except Exception as e:                        # noqa: BLE001
+                # A publisher is meant to swallow its own failures; if one
+                # does not, it still must not take the trading loop with it.
+                err = f"publisher raised {type(e).__name__}: {e}"
+            # Log a change of state only. A 30-minute outage flushing every
+            # minute would otherwise bury every real event in the feed.
+            if err != self._last_publish_error:
+                if err:
+                    self.log("WARN", "PUBLISH", err)
+                elif self._last_publish_error:
+                    self.log("INFO", "PUBLISH", "publishing again")
+                self._last_publish_error = err
+
+    def _write(self, data: str) -> None:
         d = self.path.parent
         fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
         try:

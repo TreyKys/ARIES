@@ -1,7 +1,45 @@
+# The published directory is dashboard/, the compiled ares-react bundle.
+# The live monitor is a separate standalone page in monitor/, copied in at
+# build time so it does not have to live inside another app's build output.
 [build]
   publish = "dashboard"
+  command = "npm run build"   # defined in package.json, one source of truth
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Order matters: the SPA catch-all below would otherwise swallow both of
+# these. More specific rules must come first.
+[[redirects]]
+  from = "/api/state"
+  to = "/.netlify/functions/state"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/monitor/*"
+  to = "/monitor/index.html"
+  status = 200
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# The monitor shows live account data. Keep it out of search engines and out
+# of any other site's frame.
+[[headers]]
+  for = "/monitor/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "no-store"

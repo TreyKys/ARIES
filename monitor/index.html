@@ -28,6 +28,8 @@
   .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
   .tile .k{color:var(--dim);font-size:11px;letter-spacing:.07em;text-transform:uppercase}
   .tile .v{font-family:var(--mono);font-size:21px;margin-top:5px;font-variant-numeric:tabular-nums}
+  .tile .s{color:var(--dim);font-family:var(--mono);font-size:11px;margin-top:3px;
+           font-variant-numeric:tabular-nums}
   .up{color:var(--up)} .down{color:var(--down)}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:18px;overflow:hidden}
   .panel h2{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
@@ -52,6 +54,17 @@
         border-radius:8px;font-size:12.5px;margin-bottom:18px}
   @media(prefers-color-scheme:light){:root:not([data-theme="dark"]) .warn{
     background:#fdf6e7;border-color:#e8d9a8;color:#7a5b1a}}
+  .keybox{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+          padding:16px;margin-bottom:18px;max-width:430px}
+  .keybox p{margin:0 0 10px;color:var(--dim);font-size:12.5px}
+  .keybox form{display:flex;gap:8px}
+  .keybox input{flex:1;background:var(--bg);border:1px solid var(--line);
+                border-radius:7px;padding:8px 10px;color:var(--ink);
+                font-family:var(--mono);font-size:12.5px}
+  .keybox button{background:var(--accent);border:0;border-radius:7px;color:#fff;
+                 padding:8px 15px;font-size:12.5px;cursor:pointer}
+  .stale{color:#d9a13b}
+  .src{color:var(--dim);font-size:11px;font-family:var(--mono)}
 </style>
 </head>
 <body>
@@ -63,6 +76,7 @@
   </header>
 
   <div id="banner"></div>
+  <div id="keybox"></div>
 
   <div class="grid">
     <div class="tile"><div class="k">Equity</div><div class="v" id="eq">—</div></div>
@@ -70,8 +84,8 @@
     <div class="tile"><div class="k">Today</div><div class="v" id="day">—</div></div>
     <div class="tile"><div class="k">Drawdown</div><div class="v" id="dd">—</div></div>
     <div class="tile"><div class="k">Positions</div><div class="v" id="np">—</div></div>
-    <div class="tile"><div class="k">Net exposure</div><div class="v" id="net">—</div></div>
-    <div class="tile"><div class="k">Gross exposure</div><div class="v" id="gross">—</div></div>
+    <div class="tile"><div class="k">Exposure</div><div class="v" id="net">—</div>
+      <div class="s" id="gross"></div></div>
   </div>
 
   <div class="panel"><h2>Equity</h2><svg id="spark" viewBox="0 0 600 96" preserveAspectRatio="none"></svg></div>
@@ -109,7 +123,7 @@ function spark(curve){
   const ys=curve.map(p=>p[1]), lo=Math.min(...ys), hi=Math.max(...ys);
   const span=(hi-lo)||1, W=600,H=96,pad=6;
   const pts=curve.map((p,i)=>{
-    const x=(i/(curve.length-1))*W;
+    const x=pad+(i/(curve.length-1))*(W-pad*2);
     const y=H-pad-((p[1]-lo)/span)*(H-pad*2);
     return x.toFixed(1)+','+y.toFixed(1);
   }).join(' ');
@@ -120,23 +134,96 @@ function spark(curve){
        vector-effect="non-scaling-stroke"/>`;
 }
 
+// Two places the state can come from. Served locally by
+// scripts/serve_dashboard.py it is a file on disk; hosted on Netlify it is
+// /api/state, which the bot pushes to (see ares/publish.py). The hosted read
+// needs a key, held in this browser only.
+const LOCAL='../state/dashboard.json', API='/api/state';
+const isLocal=['127.0.0.1','localhost',''].includes(location.hostname);
+let key=null, src='', needKey=false;
+
+function loadKey(){
+  // Accept the key from the URL FRAGMENT. A fragment is never sent to the
+  // server, so it stays out of access logs; a query string would not.
+  const m=location.hash.match(/(?:^#|&)k=([^&]+)/);
+  if(m){ key=decodeURIComponent(m[1]);
+         try{localStorage.setItem('aries_key',key)}catch(e){}
+         history.replaceState(null,'',location.pathname+location.search); }
+  if(!key){ try{ key=localStorage.getItem('aries_key') }catch(e){} }
+}
+loadKey();
+
+function keyForm(show){
+  const box=document.getElementById('keybox');
+  if(!show){ if(box.innerHTML) box.innerHTML=''; return; }
+  if(box.dataset.on) return;
+  box.dataset.on='1';
+  box.innerHTML=`<div class="keybox"><p>This monitor needs the read key set as
+    <b>ARIES_READ_TOKEN</b> on the site. It is stored in this browser only.</p>
+    <form><input id="kin" type="password" placeholder="read key"
+      autocomplete="off" spellcheck="false"><button>Open</button></form></div>`;
+  box.querySelector('form').addEventListener('submit',ev=>{
+    ev.preventDefault();
+    const v=box.querySelector('#kin').value.trim();
+    if(!v) return;
+    key=v; try{localStorage.setItem('aries_key',v)}catch(e){}
+    needKey=false; box.dataset.on=''; box.innerHTML=''; tick();
+  });
+}
+
+async function fetchState(){
+  if(isLocal){
+    try{
+      const r=await fetch(LOCAL+'?_='+Date.now(),{cache:'no-store'});
+      if(r.ok){ src='local file'; return await r.json(); }
+    }catch(e){/* fall through to the hosted endpoint */}
+  }
+  const h={};
+  if(key) h['x-aries-key']=key;
+  const r=await fetch(API+'?_='+Date.now(),{cache:'no-store',headers:h});
+  if(r.status===401){ const e=new Error('read key required'); e.needKey=true; throw e; }
+  if(!r.ok){
+    let m='HTTP '+r.status;
+    try{ const j=await r.json(); if(j.error) m=j.error; }catch(e){}
+    throw new Error(m);
+  }
+  src='netlify';
+  return await r.json();
+}
+
 async function tick(){
   let d;
   try{
-    const r=await fetch('../state/dashboard.json?_='+Date.now(),{cache:'no-store'});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    d=await r.json();
+    d=await fetchState();
+    needKey=false;
   }catch(e){
-    document.getElementById('status').textContent='no data — is the bot running?';
+    needKey=!!e.needKey;
+    keyForm(needKey);
+    document.getElementById('status').textContent =
+      needKey ? 'read key required'
+              : (e.message||'no data')+' — is the bot running?';
     document.getElementById('dot').classList.remove('on');
     return;
   }
+  keyForm(false);
+  // Age of the snapshot, not of the page. Hosted, the page keeps polling
+  // happily while the bot is dead -- the last snapshot just sits there. A
+  // stale snapshot must look wrong, so this drives the live/offline light.
+  const age=(Date.now()-(d.generated||0))/1000;
+  const stale=age>180;
   const dot=document.getElementById('dot');
-  dot.classList.toggle('on', !!d.connected);
+  dot.classList.toggle('on', !!d.connected && !stale);
   document.getElementById('status').textContent =
-    (d.connected?'live':'offline')+' · '+(d.mode||'paper')+' · '+(d.strategy||'');
-  document.getElementById('meta').textContent =
-    'updated '+clock(d.generated)+' · '+(d.n_trades||0)+' trades';
+    (stale ? 'stale' : (d.connected?'live':'offline'))
+    +' · '+(d.mode||'paper')+' · '+(d.strategy||'');
+  const ago = age<90 ? Math.round(age)+'s ago'
+            : age<5400 ? Math.round(age/60)+'m ago'
+            : age<172800 ? Math.round(age/3600)+'h ago'
+            : stamp(d.generated);
+  const meta=document.getElementById('meta');
+  meta.textContent='updated '+ago+' · '+(d.n_trades||0)+' trades'
+                   +(src?' · '+src:'');
+  meta.className='sub'+(stale?' stale':'');
 
   document.getElementById('banner').innerHTML = d.last_error
     ? '<div class="warn">'+esc(d.last_error)+'</div>' : '';
@@ -151,7 +238,8 @@ async function tick(){
   document.getElementById('dd').textContent=fmt(d.drawdown_pct,2)+'%';
   document.getElementById('np').textContent=d.n_positions??'—';
   document.getElementById('net').textContent=money(d.net_exposure);
-  document.getElementById('gross').textContent=money(d.gross_exposure);
+  document.getElementById('gross').textContent =
+    d.gross_exposure==null?'':'gross '+money(d.gross_exposure);
 
   spark(d.curve);
 

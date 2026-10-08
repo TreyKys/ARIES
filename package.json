@@ -1,0 +1,15 @@
+{
+  "name": "aries-netlify",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Netlify functions for the ARIES live monitor. The React dashboard has its own manifest in ares-react/.",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "11.1.1"
+  },
+  "scripts": {
+    "test": "node tests/js/state_function.test.mjs && node tests/js/roundtrip.test.mjs",
+    "build": "mkdir -p dashboard/monitor && cp monitor/index.html dashboard/monitor/index.html",
+    "test:page": "node tests/js/page.test.mjs"
+  }
+}
