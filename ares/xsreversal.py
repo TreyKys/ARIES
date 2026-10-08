@@ -47,7 +47,9 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
                     top_k: int = 5, cost_bps: float = 0.0,
                     capital: float = 10_000.0,
                     bars_per_year: int = 24 * 365,
-                    min_universe: int = 8) -> ReversalResult:
+                    min_universe: int = 8,
+                    min_sigma: float = 0.0,
+                    sigma_window: int = 168) -> ReversalResult:
     """Short recent relative winners, buy relative losers; dollar-neutral.
 
     lookback: bars used to measure the idiosyncratic move.
@@ -76,8 +78,27 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
             r[live] = row[live] / prev[live] - 1.0
             # strip the common market factor: what is left is idiosyncratic
             r[live] -= np.nanmean(r[live])
-            order = np.argsort(np.where(live, r, np.nan))
-            valid = [j for j in order if live[j]]
+            if min_sigma > 0.0:
+                # SELECTIVITY -- the direct attack on the fee problem. Trading
+                # every asset every bar collects a tiny edge (2.13bp) against a
+                # full fee (15bp retail). Requiring a dislocation of at least
+                # min_sigma leaves the fee unchanged while raising the edge per
+                # bet, so fewer and larger bets can clear a cost that constant
+                # trading cannot. Sigma is the trailing cross-sectional spread
+                # of these same demeaned moves, using past bars only.
+                lo = max(lookback, i - sigma_window)
+                hist = (P[lo:i] / np.where(P[lo - lookback:i - lookback] > 0,
+                                           P[lo - lookback:i - lookback], np.nan) - 1.0)
+                with np.errstate(invalid="ignore"):
+                    hist = hist - np.nanmean(hist, axis=1, keepdims=True)
+                sd = np.nanstd(hist)
+                if not np.isfinite(sd) or sd <= 0:
+                    sd = np.inf
+                eligible = live & (np.abs(np.nan_to_num(r)) >= min_sigma * sd)
+            else:
+                eligible = live
+            order = np.argsort(np.where(eligible, r, np.nan))
+            valid = [j for j in order if eligible[j]]
             k = min(top_k, len(valid) // 2)
             longs = valid[:k]            # fell most vs the basket -> buy
             shorts = valid[-k:]          # rose most vs the basket -> short
@@ -109,8 +130,13 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
             # equity AT THE TIME of the trade. Dividing summed raw notional by
             # the STARTING capital reported 1,156,298% per rebalance once the
             # book compounded, which in turn zeroed out the breakeven figure.
-            turnover_frac += rebal_notional / equity_now
-            rebalances += 1
+            # Count a rebalance only when it actually traded. With selectivity
+            # on, most bars have nothing eligible; counting those as bets would
+            # inflate bets_per_year and deflate turnover-per-bet, corrupting the
+            # per-bet breakeven that decides tradeability.
+            if rebal_notional > 0.0:
+                turnover_frac += rebal_notional / equity_now
+                rebalances += 1
         marks = {cols[j]: float(row[j]) for j in range(n)
                  if np.isfinite(row[j]) and row[j] > 0}
         last_ts = ts

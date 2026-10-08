@@ -660,3 +660,89 @@ Bug 3 printed +547.9%/yr next to the broken turnover; bug 4 then dressed it as
 tradeable. Reading the return column alone would have shipped it.
 `tests/test_xsreversal.py` now asserts that trading AT the breakeven cost leaves
 roughly nothing -- the consistency check that would have caught bug 4 at once.
+
+## Fixing the fee wall: the instrument, not the strategy
+
+The crypto reversal edge was real (gross +74.8%/yr at a 4-hour hold) but its
+breakeven was 1.65bp round-trip against ~15bp retail Binance spot -- about 10x
+too expensive. Two fixes were tried.
+
+### Selectivity: fails, and the failure is informative
+
+Trading only dislocations beyond N sigma leaves the fee unchanged while raising
+the edge per bet, so it should help. It does the opposite:
+
+| threshold | gross %/yr | bets/yr | breakeven |
+|---|---|---|---|
+| none | +74.8% | 2,191 | 1.65bp |
+| 1 sigma | +39.7% | 2,095 | 1.00bp |
+| **2 sigma** | **-9.1%** | 923 | **-0.89bp** |
+| 3 sigma | -10.2% | 283 | -3.60bp |
+
+The edge turns NEGATIVE by 2 sigma. Large crypto dislocations are news -- hacks,
+listings, liquidation cascades -- and news does not revert; it is real
+repricing. **The edge is small precisely because it is noise-driven, so
+anything big enough to pay a 15bp fee is news.** Structural, not tunable.
+
+### Changing instrument: this is the fix
+
+Cost per unit notional is set by contract size, and futures are enormous
+relative to their commission:
+
+| instrument | round-trip cost |
+|---|---|
+| Binance spot (retail maker) | 15.00 bp |
+| MES micro S&P ($30k notional) | 0.75 bp |
+| MNQ micro Nasdaq ($44k) | 0.34 bp |
+| MGC micro gold ($40k) | 0.50 bp |
+
+20-40x cheaper. A 1.65bp breakeven fails at 15bp and clears at 0.75bp. These
+are also precisely the instruments a futures prop firm offers, so the fix and
+the account type coincide.
+
+### Result on 22 futures, hourly, 2.4yr (`scripts/fetch_futures_intraday.py`)
+
+Data hazards found and handled before trusting anything. Yahoo's continuous
+front-month series carry ROLL DISCONTINUITIES: natural gas showed a 27.08%
+single-hour move (27 sd), silver 19.92%, copper 17.13%, and the >10sd counts
+cluster in energy (HO 21, RB 20, NG 11) -- the same group that produced the
+largest apparent edge. Bars beyond 5%/hour and their neighbours are blanked,
+since a reversal strategy profits from both the glitch and its mirror image.
+Zero-volume (stale) bars are only ~4%, and grains simply have fewer bars rather
+than filled ones, which the live mask already handles.
+
+| universe | in-sample | out-of-sample |
+|---|---|---|
+| energy (CL/NG/RB/HO) | +66.4%/yr, Sharpe 2.07 | **-41.4%/yr, Sharpe -1.20** |
+| **ALL 22** | +38.5%/yr, Sharpe 3.67 | **+22.7%/yr, Sharpe 1.80 +/-1.48** |
+
+Energy was pure overfit: best-of-nine configurations chosen in-sample, and it
+collapsed out-of-sample. Rejected.
+
+The broad 22-market version survived, degraded, at **+22.7%/yr net of 0.75bp
+costs, Sharpe 1.80 +/-1.48, maxDD 19.4%**, with profit not pathologically
+concentrated (top 1% of bars carry 8% of absolute movement).
+
+**What is established:** the fee wall is fixed by the instrument. The same
+strategy family goes from every configuration negative on crypto spot at 15bp
+to +22.7% out-of-sample on futures at 0.75bp.
+
+**What is NOT established:** the edge itself. 1.2 years out-of-sample gives a
+Sharpe standard error of +/-1.48, so t = 1.22 -- not significant. The 95%
+interval spans [-1.1, +4.7]. This is a promising lead, not a finding.
+
+### Why it matters if it holds
+
+Sharpe 1.80 with DD/vol of 1.54x is a different animal from trend following
+(0.49 at 2.5x). Under a 6% account kill line the safe size is 3.9% vol, giving
+**7.0%/yr** rather than 1.2%:
+
+| account | %/yr | gross $/yr | keep 90% |
+|---|---|---|---|
+| $50,000 | 7.0% | $3,510 | $3,159 |
+| $150,000 | 7.0% | $10,531 | $9,478 |
+| $300,000 | 7.0% | $21,062 | $18,956 |
+
+against $265-1,323/yr for trend following. The blocker is data: Yahoo caps
+hourly history at 730 days, and confirming a Sharpe near 1.8 to t=2 needs
+roughly 5 years of out-of-sample hourly futures data.
