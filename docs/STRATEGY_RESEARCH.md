@@ -860,3 +860,61 @@ would be trained to avoid does not arise.
 
 Measured priority therefore favours cost (0.34bp vs 0.75bp roughly doubles the
 return) over learned exits (which made the comparable strategy 3x worse).
+
+## VERDICT on hourly cross-sectional reversal: rejected on 15 years of CME data
+
+The hourly result that drove the whole fast-strategy phase (Sharpe 1.80, later
+3.11 at MNQ costs) came from 2.4 years of Yahoo futures data with a 1.2-year
+out-of-sample window. Databento's CME `ohlcv-1h` settles it: 20 continuous
+contracts, 1,363,034 bars, 2011-2025, for $8.85 of the free credit.
+
+Coverage screen first: metals map poorly to hourly in this dataset (PL 4.3
+bars/trading-day, SI 5.9, HG 8.5, GC 9.2 against 19.1 for ES/NQ), so they were
+dropped as stale-price contaminators, leaving 16 markets at 15.7-19.1 bars/day.
+Roll gaps and bad ticks (>5%/hour) and their neighbours blanked. Config chosen
+in-sample only, 9yr in-sample / 6yr out-of-sample.
+
+| venue | in-sample (9yr) | out-of-sample (6yr) |
+|---|---|---|
+| MNQ @ 0.34bp | +4.79%/yr, Sharpe +0.68 | **+2.63%/yr, Sharpe +0.32 +/-0.42, t=0.76** |
+| MES @ 0.75bp | -3.20%/yr, Sharpe -0.38 | **-9.00%/yr, Sharpe -0.78, maxDD 52.1%** |
+
+At the realistic cost it LOSES. At the optimistic cost it is indistinguishable
+from zero. On a $50k account under a 5% leash this is **$18/month**, against the
+$658/month projected from the short Yahoo sample.
+
+Cause of the earlier overestimate: 1.2 years out-of-sample, best-of-nine config
+selection, and Yahoo hourly futures data carrying quality defects already
+documented here (a 27.08% single-hour move in natural gas). Short sample plus
+noisy data plus selection.
+
+### The speed thesis is dead, and this is why
+
+The whole phase rested on quality = (edge per bet) x sqrt(bets per year), which
+predicted that moving from daily (Sharpe 0.49 over 57 years, t=3.50 -- that
+result stands) to hourly should give:
+
+    predicted hourly Sharpe = (0.49/sqrt(252)) * sqrt(8760) = 2.89
+    measured on 15yr CME     = 0.32
+
+**Speeding up does not multiply the edge.** sqrt(N) assumes a constant per-bet
+edge; in reality the per-bet edge decays faster than sqrt(N) grows, because at
+higher frequency an increasing share of apparent "dislocation" is bid-ask bounce
+and microstructure noise that cannot be captured. This also explains why the
+crypto version needed a round-trip cost below 1.6bp that does not exist at
+retail: there was less real signal there than the gross figures suggested.
+
+### What survives, after nine strategy families
+
+- **Funding carry** (long spot + short perp): ~17-20%/yr at moderate leverage on
+  own capital, maxDD ~1-2%. Real, validated on 6.7yr of actual funding history,
+  not prop-compatible (needs spot).
+- **Daily cross-sectional reversal**: Sharpe 0.49 after costs, t=3.50, 57 years.
+  Real and significant, but DD/vol ~4.5x makes it worth ~0.65%/yr under a 5%
+  prop leash.
+
+Rejected: hedged grid (accounting identity), all-perp futures carry (funding
+cancels), crude/natgas calendar spreads (Sharpe 0.15, sign-unstable), quarterly
+vs perp (negative since the 2024 ETF launch), directional grid (dominated by
+carry), crypto hourly reversal (fee-bound below 1.6bp), hourly futures reversal
+(this section).
