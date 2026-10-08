@@ -746,3 +746,61 @@ Sharpe 1.80 with DD/vol of 1.54x is a different animal from trend following
 against $265-1,323/yr for trend following. The blocker is data: Yahoo caps
 hourly history at 730 days, and confirming a Sharpe near 1.8 to t=2 needs
 roughly 5 years of out-of-sample hourly futures data.
+
+## Independent confirmation: reversal is real, measured over 57 years
+
+The hourly futures result (Sharpe 1.80 OOS) rested on 1.2 years and was not
+significant (t=1.22). The same idea run DAILY on the 57-market daily panel over
+57 years gives a properly powered read, on data independent of the hourly tests.
+Implausible daily moves (>25%) and their neighbours are blanked first, since
+continuous front-month series carry roll discontinuities.
+
+| look | hold | cost | return %/yr | Sharpe | t | maxDD |
+|---|---|---|---|---|---|---|
+| 1 | 1 | 0.00bp | +5.67% | +0.79 +/-0.15 | **5.22** | 31.0% |
+| 1 | 1 | 0.75bp | +3.38% | **+0.49 +/-0.14** | **3.50** | 34.9% |
+| 2 | 1 | 0.75bp | +2.54% | +0.36 | 2.59 | 38.1% |
+| 5 | 5 | 0.75bp | +0.48% | +0.09 | 0.71 | 48.0% |
+
+**t = 3.50 after realistic futures costs, over 57 years.** Cross-sectional
+reversal is a real, persistent phenomenon in futures, not an artifact of a short
+crypto sample. This is the first properly significant strategy result in the
+repo besides funding carry.
+
+### The speed theory predicts the hourly number
+
+Sharpe = (edge per bet) x sqrt(bets per year). From the daily result:
+edge per bet = 0.49 / sqrt(252) = 0.0309. Scaling to hourly:
+
+    predicted hourly Sharpe = 0.0309 * sqrt(8760) = 2.89
+    observed hourly OOS                           = 1.80
+
+Same order of magnitude, observed below predicted -- which is what should
+happen, since per-bet edge decays as frequency rises and fees bite harder. Two
+independent datasets agreeing quantitatively is the strongest evidence produced
+in this project.
+
+### What is still NOT established, and the blocker
+
+The daily version is significant but NOT prop-viable: maxDD 34.9% against vol
+~6.9% is a DD/vol of ~4.5x, so a 6% kill line permits only ~1.3% vol and
+~0.65%/yr. The HOURLY version is the one with a usable DD/vol (1.54x, giving
+7.0%/yr under a 6% line), and that one has only 1.2 years out-of-sample.
+
+Confirming Sharpe ~1.8 to t=2 needs roughly 5 years of out-of-sample hourly
+futures data. Sources checked in this environment:
+
+- **Yahoo**: works but hard-capped at 730 days of hourly (2.4yr). Already used.
+- **Stooq**: the agent proxy terminates the connection mid-transfer
+  (`ws_closed_mid_exchange`); unusable here.
+- **Dukascopy freeserv**: returns `_callbacks____error([null])` even for
+  EUR/USD; the per-day binary datafeed would need ~25,000 requests for 5yr x 20
+  instruments, impractical.
+- **Databento / TwelveData / Polygon / EODHD**: HTTP 401 -- all require an API
+  key. **Databento is the right one**: purpose-built for CME historical, data
+  from 2010, and $125 of free signup credit, which covers 5-10yr of hourly bars
+  for ~20 instruments many times over.
+
+So the remaining step needs a user-supplied Databento API key. Everything else
+is built: `ares/xsreversal.py` on the audited ledger, roll-gap cleaning, an
+in-sample/out-of-sample harness, and the breakeven-cost metric.
