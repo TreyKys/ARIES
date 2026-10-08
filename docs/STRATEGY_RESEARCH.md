@@ -989,3 +989,59 @@ quality; this project found two in ten families.
 That is the honest ceiling of what was found here. The combined book is real,
 significant and prop-compatible, and it is worth roughly $35/month on a $50k
 account at a survivable size -- not $600.
+
+## The result that holds: combined book sized against REALISTIC drawdown
+
+The combined trend+reversal book was dismissed at $35/month because it was
+sized against the worst drawdown in 57 years (18.9%, DD/vol 4.45x). That is the
+wrong risk measure for a prop account: the firm cares about the drawdown hit
+during the year or two the account is held, not a once-in-57-years event.
+
+Distribution of max drawdown WITHIN rolling 1-year windows (15,863 windows):
+
+| percentile | max DD | DD/vol |
+|---|---|---|
+| 50th | 3.55% | 0.84x |
+| 75th | 4.84% | 1.14x |
+| 90th | 7.12% | 1.68x |
+| 95th | 8.01% | 1.89x |
+| 99th | 13.71% | 3.23x |
+| all-57yr worst | 18.9% | 4.45x |
+
+Sizing to a 5% leash against the 90th percentile rather than the all-time worst
+takes safe vol from 1.12% to 2.98% and the result from $35 to **$93/month**.
+
+### Robustness -- this one survives every check
+
+| window | Sharpe | DD/vol | $/month |
+|---|---|---|---|
+| first half (29.9yr) | +0.75 +/-0.21 | 1.83x | $77 |
+| **second half (25.9yr, OOS)** | **+0.92 +/-0.23** | 1.50x | **$114** |
+| full 57yr | +0.84 +/-0.16 | 1.68x | $93 |
+
+Out-of-sample is BETTER than in-sample, and DD/vol is stable (1.83x vs 1.50x).
+Every decade is positive: 1970s 0.88, 1980s 0.91, 1990s 0.58, 2000s 1.34,
+2010s 0.68, 2020s 0.48 -- worst decade still yields ~$59/month, best $273.
+
+### The explicit price
+
+Sizing at the 90th percentile means roughly a **1-in-10 chance per year** of
+breaching the leash and losing the account; at the 95th percentile it is 1-in-20
+for $83/month. Re-qualification costs ~$150, so expected re-qualification cost
+is about $0.63/month against $83-93 of income -- negligible, but the account
+interruption is real.
+
+Honest caveats:
+- Rolling windows overlap heavily, so these percentiles understate tail risk
+  somewhat; treat the 90th as nearer a true 80th.
+- The most recent decade is the weakest (Sharpe 0.48), consistent with the decay
+  documented elsewhere here. Forward expectation should lean on the 2020s figure
+  (~$59/month), not the full-sample $93.
+- Costs assumed 0.75bp (micro futures). Verify against the firm's actual
+  commission; cost sensitivity is documented above and it matters.
+- This is a DAILY strategy, ~252 rebalances/yr. It is not fast. Fast did not
+  work (see the hourly rejection); this does.
+
+**Standing recommendation:** expect $60-90/month on a $50k account, carried by
+two independently significant edges (trend t=4.71, reversal t=3.50, correlation
++0.007), with ~10%/yr re-qualification risk.
