@@ -1045,3 +1045,60 @@ Honest caveats:
 **Standing recommendation:** expect $60-90/month on a $50k account, carried by
 two independently significant edges (trend t=4.71, reversal t=3.50, correlation
 +0.007), with ~10%/yr re-qualification risk.
+
+## Implementation gap: the runner is worse than the research, and why
+
+`ares/combined.py` + `run_aries_futures.py` implement the combined book for a
+real Interactive Brokers account. Building it surfaced two things the research
+figures hid.
+
+**Bug found: rebalance frequency.** The first runner rebalanced monthly and
+measured Sharpe +0.22 (t=1.09). The reversal leg's edge lives at a ONE-DAY
+horizon (lookback=1, hold=1 in the validated test), so monthly rebalancing
+discards it. Rebalancing daily recovers Sharpe +0.41 (t=2.01) and lifts return
+from +1.97% to +3.90%/yr. The trend leg moves slowly enough that daily
+rebalancing costs it little.
+
+**Fees are real and large.** Daily rebalancing of the reversal leg generates
+$31,230 of fees on a $25,000 account over 26 years -- about $1,200/yr, roughly
+4.8% of capital annually, against a gross return near 8.7%. A no-trade band was
+added (0.34 of target notional) on the theory that whole-contract rounding was
+causing jitter; it changed fees only from $31,480 to $31,230, which proves the
+turnover is the strategy genuinely flipping positions daily rather than
+rounding noise. Net is still positive and significant, but half the gross goes
+to the broker.
+
+### Research vs implementable
+
+| | research | implemented |
+|---|---|---|
+| markets | 57 | 8 (available as micro futures) |
+| position granularity | fractional | whole contracts |
+| Sharpe | +0.84 +/-0.16 | **+0.41 +/-0.21** |
+| t | 5.37 | 2.01 |
+| DD/vol | 4.45x | **7.48x** |
+
+The gap is mostly BREADTH. The research book spread risk over 57 markets; only
+8 are available as liquid micro futures at this account size, and less
+diversification means both a lower Sharpe and a worse drawdown-to-volatility
+ratio. Whole-contract rounding and real daily turnover account for the rest.
+
+### Honest expectation on own capital
+
+At the implemented DD/vol of 7.48x:
+
+| capital | drawdown tolerance | return | $/month |
+|---|---|---|---|
+| $25,000 | 25% | 1.37%/yr | **$29** |
+| $50,000 | 25% | 1.37%/yr | **$57** |
+| $25,000 | 15% | 0.82%/yr | $17 |
+
+Not the $93/month the 57-market research implied. More markets would close part
+of the gap, but more markets means more overnight margin, i.e. more capital.
+
+### Capital floor is enforced, not advised
+
+`check_viable()` RAISES rather than warns. The book needs >= 6 markets (4
+measured Sharpe -0.11, a loss) and 8 diversified micro contracts need ~$11,150
+of overnight margin, so a 60%-utilisation budget requires about $18.6k.
+A $5,000 account is refused with the arithmetic in the error message.
