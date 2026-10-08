@@ -62,7 +62,7 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
     led = Ledger(capital)
     cost_rate = cost_bps / 1e4
     n = len(cols)
-    traded_notional = 0.0
+    turnover_frac = 0.0
     rebalances = 0
     last_ts = int(stamps[lookback]) if len(stamps) > lookback else 0
 
@@ -94,6 +94,7 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
                 target[cols[j]] = per / row[j]
             for j in shorts:
                 target[cols[j]] = -per / row[j]
+            rebal_notional = 0.0
             for j in range(n):
                 c = cols[j]
                 if not np.isfinite(row[j]) or row[j] <= 0:
@@ -101,9 +102,14 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
                 dq = target[c] - led.pos.get(c, 0.0)
                 if abs(dq) > 1e-15:
                     notional = abs(dq) * float(row[j])
-                    traded_notional += notional
+                    rebal_notional += notional
                     led.trade(ts, c, float(dq), float(row[j]),
                               cost=notional * cost_rate)
+            # Turnover must be scale-free: accumulate it as a fraction of the
+            # equity AT THE TIME of the trade. Dividing summed raw notional by
+            # the STARTING capital reported 1,156,298% per rebalance once the
+            # book compounded, which in turn zeroed out the breakeven figure.
+            turnover_frac += rebal_notional / equity_now
             rebalances += 1
         marks = {cols[j]: float(row[j]) for j in range(n)
                  if np.isfinite(row[j]) and row[j] > 0}
@@ -128,7 +134,7 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
         ledger=led,
         gross_return_pct=gross * 100,
         fees_paid=led.fees_paid,
-        turnover_per_rebalance=(traded_notional / rebalances / capital) if rebalances else 0.0,
+        turnover_per_rebalance=(turnover_frac / rebalances) if rebalances else 0.0,
         n_rebalances=rebalances,
         bets_per_year=(rebalances / span_yr) if span_yr > 0 else 0.0)
 
