@@ -918,3 +918,37 @@ cancels), crude/natgas calendar spreads (Sharpe 0.15, sign-unstable), quarterly
 vs perp (negative since the 2024 ETF launch), directional grid (dominated by
 carry), crypto hourly reversal (fee-bound below 1.6bp), hourly futures reversal
 (this section).
+
+### Regime check: the edge decayed, and recent data is the WORSE data
+
+Tested directly on the claim that only recent conditions matter. Same config,
+MNQ cost 0.34bp, by era, on the 15yr CME panel:
+
+| era | return/yr | Sharpe | t | maxDD |
+|---|---|---|---|---|
+| 2011-2013 | +14.09% | **+1.99** | 2.00 | 14.8% |
+| 2014-2016 | +9.75% | +1.14 | 1.53 | 14.5% |
+| 2017-2019 | -0.38% | -0.00 | 0.00 | 22.2% |
+| 2020-2022 | +1.13% | +0.19 | 0.32 | 27.8% |
+| 2023-2025 | +4.67% | +0.56 | 0.90 | 15.9% |
+| 2025 only | +2.35% | +0.31 | 0.30 | 14.6% |
+
+The edge was genuinely strong in 2011-2016 (Sharpe 1.99 then 1.14) and has been
+at or near zero since 2017. **Discarding history would not have helped: the
+recent sample is the weaker one.** A 2025-only test finds Sharpe 0.31 and
+nothing to build on.
+
+This is decay by competition. In 2011 hourly cross-market reversal was awkward
+to automate and lightly traded; by 2017 it was crowded and the edge had been
+competed down toward the fee floor. The full-sample Sharpe 0.32 is the average
+of a dead recent regime and a live old one, and the 15yr rejection stands.
+
+Best case from the most recent era: Sharpe 0.56 at maxDD 15.9% is DD/vol ~1.9x,
+so a 5% prop leash permits ~2.6% vol and ~1.5%/yr -- about $61/month on $50k.
+
+**Strategic implication worth more than the result:** the decay curve says edges
+live where automation has not yet arrived. Futures hourly reversal paid in 2011
+and does not now; crypto funding carry paid 27-37%/yr in 2020-21 and pays 2-5%
+now (measured earlier in this document). Both decayed as participants arrived.
+That argues for newer or less-contested venues rather than better signals in
+mature ones -- but prop firms offer only the mature venues, which is the bind.
