@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 from ares.ledger import summarise
-from ares.xsreversal import breakeven_cost_bps, run_xs_reversal
+from ares.xsreversal import breakeven_from, run_xs_reversal
 
 TF = sys.argv[1] if len(sys.argv) > 1 else "1h"
 BARS_YR = {"1h": 24 * 365, "15m": 96 * 365, "5m": 288 * 365}[TF]
@@ -46,15 +46,15 @@ def main() -> int:
           f"{'turn/reb':>10s}{'bets/yr':>9s}{'BREAKEVEN bp':>14s}{'net@2bp':>10s}")
     print('-' * 70)
     rows = []
-    for look in (1, 4, 12, 24):
+    for look in (1, 4, 12):
         for hold in (1, 4, 12, 24, 72):
-            for k in (3, 5):
+            for k in (5,):
                 if hold < look and hold != 1:
                     continue
                 kw = dict(lookback=look, hold=hold, top_k=k,
                           bars_per_year=BARS_YR, capital=10_000.0)
                 r0 = run_xs_reversal(px, cost_bps=0.0, **kw)
-                be = breakeven_cost_bps(px, **kw)
+                be = breakeven_from(r0)          # derived, not a third pass
                 r2 = run_xs_reversal(px, cost_bps=2.0, **kw)
                 s2 = summarise(r2.ledger, periods_per_year=BARS_YR)
                 rows.append((be, look, hold, k, r0.gross_return_pct, s2.ann_return_pct))

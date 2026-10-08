@@ -133,17 +133,25 @@ def run_xs_reversal(px: pd.DataFrame, *, lookback: int = 1, hold: int = 1,
         bets_per_year=(rebalances / span_yr) if span_yr > 0 else 0.0)
 
 
-def breakeven_cost_bps(px: pd.DataFrame, **kw) -> float:
-    """The round-trip cost at which the gross edge is exactly consumed.
+def breakeven_from(r: ReversalResult) -> float:
+    """Round-trip cost (bp) at which the gross edge is exactly consumed.
 
-    This is the number that decides viability: compare it against what you can
-    actually trade at (taker ~5bp, maker ~2bp, maker with rebate ~0 or better).
+    Takes an ALREADY-COMPUTED zero-cost result instead of re-running the
+    backtest. The sweep was doing three full passes per configuration where two
+    suffice, and at ~50k bars x 20 assets that third pass alone pushed the whole
+    sweep past its time budget, so it produced nothing at all.
+
+    This is the number that decides viability -- compare it against what can
+    actually be traded (taker ~10bp round trip, maker ~2bp, VIP maker ~0).
     """
-    r = run_xs_reversal(px, cost_bps=0.0, **kw)
     if r.n_rebalances == 0 or r.turnover_per_rebalance <= 0:
         return 0.0
-    gross_frac = r.gross_return_pct / 100.0
     turns_per_year = r.turnover_per_rebalance * r.bets_per_year
     if turns_per_year <= 0:
         return 0.0
-    return (gross_frac / turns_per_year) * 1e4
+    return ((r.gross_return_pct / 100.0) / turns_per_year) * 1e4
+
+
+def breakeven_cost_bps(px: pd.DataFrame, **kw) -> float:
+    """Convenience wrapper: one zero-cost run, then derive breakeven from it."""
+    return breakeven_from(run_xs_reversal(px, cost_bps=0.0, **kw))
