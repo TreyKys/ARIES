@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIES</title>
+<style>
+  :root{
+    --bg:#0d0f12; --panel:#14171c; --line:#22262e; --ink:#e6e8ec;
+    --dim:#848b98; --up:#3fb27f; --down:#e0566f; --accent:#6c8cff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media(prefers-color-scheme:light){:root:not([data-theme="dark"]){
+    --bg:#f7f8fa; --panel:#fff; --line:#e3e6eb; --ink:#15181d;
+    --dim:#6b7280; --up:#1a8a5c; --down:#c8364f;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  h1{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin:0}
+  .sub{color:var(--dim);font-size:12px;font-family:var(--mono)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--down);display:inline-block;
+       margin-right:5px;vertical-align:1px}
+  .dot.on{background:var(--up)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .tile .k{color:var(--dim);font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+  .tile .v{font-family:var(--mono);font-size:21px;margin-top:5px;font-variant-numeric:tabular-nums}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:18px;overflow:hidden}
+  .panel h2{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+            margin:0;padding:12px 15px;border-bottom:1px solid var(--line);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+  th{text-align:left;color:var(--dim);font-weight:500;padding:8px 15px;font-size:11px;
+     text-transform:uppercase;letter-spacing:.06em}
+  td{padding:7px 15px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+  td.r,th.r{text-align:right}
+  .scroll{max-height:330px;overflow:auto}
+  .feed{font-family:var(--mono);font-size:12.5px;max-height:330px;overflow:auto}
+  .feed div{padding:6px 15px;border-top:1px solid var(--line);display:flex;gap:10px}
+  .feed div:first-child{border-top:none}
+  .t{color:var(--dim);flex:0 0 78px}
+  .lv{flex:0 0 52px;font-size:10.5px;padding-top:1px}
+  .lv.TRADE{color:var(--accent)} .lv.WARN{color:#d9a13b} .lv.ERROR{color:var(--down)}
+  .lv.INFO{color:var(--dim)}
+  .msg{flex:1;word-break:break-word}
+  .empty{padding:22px 15px;color:var(--dim);font-size:13px}
+  svg{display:block;width:100%;height:96px}
+  .warn{background:#2a1f12;border:1px solid #5a4620;color:#e8c48a;padding:10px 14px;
+        border-radius:8px;font-size:12.5px;margin-bottom:18px}
+  @media(prefers-color-scheme:light){:root:not([data-theme="dark"]) .warn{
+    background:#fdf6e7;border-color:#e8d9a8;color:#7a5b1a}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ARIES</h1>
+    <span class="sub"><span id="dot" class="dot"></span><span id="status">connecting…</span></span>
+    <span class="sub" id="meta"></span>
+  </header>
+
+  <div id="banner"></div>
+
+  <div class="grid">
+    <div class="tile"><div class="k">Equity</div><div class="v" id="eq">—</div></div>
+    <div class="tile"><div class="k">Total P&amp;L</div><div class="v" id="pnl">—</div></div>
+    <div class="tile"><div class="k">Today</div><div class="v" id="day">—</div></div>
+    <div class="tile"><div class="k">Drawdown</div><div class="v" id="dd">—</div></div>
+    <div class="tile"><div class="k">Positions</div><div class="v" id="np">—</div></div>
+    <div class="tile"><div class="k">Net exposure</div><div class="v" id="net">—</div></div>
+    <div class="tile"><div class="k">Gross exposure</div><div class="v" id="gross">—</div></div>
+  </div>
+
+  <div class="panel"><h2>Equity</h2><svg id="spark" viewBox="0 0 600 96" preserveAspectRatio="none"></svg></div>
+
+  <div class="panel"><h2>Open positions</h2><div class="scroll"><table>
+    <thead><tr><th>Market</th><th class="r">Qty</th><th class="r">Target</th>
+      <th class="r">Price</th><th class="r">Value</th></tr></thead>
+    <tbody id="pos"></tbody></table><div id="posEmpty"></div></div></div>
+
+  <div class="panel"><h2>Trade history</h2><div class="scroll"><table>
+    <thead><tr><th>Time</th><th>Market</th><th>Side</th><th class="r">Qty</th>
+      <th class="r">Price</th><th class="r">Cost</th></tr></thead>
+    <tbody id="trades"></tbody></table><div id="trEmpty"></div></div></div>
+
+  <div class="panel"><h2>Activity</h2><div class="feed" id="feed"></div></div>
+</div>
+
+<script>
+const fmt=(n,d=2)=>n==null?'—':n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const money=n=>n==null?'—':(n<0?'-':'')+'$'+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const clock=ts=>new Date(ts).toLocaleTimeString([],{hour12:false});
+// A replay stamps rows with the BAR date, which can be decades ago. Show the
+// date unless the row is from today, so historical rows are not read as live.
+const stamp=ts=>{const d=new Date(ts),n=new Date();
+  return d.toDateString()===n.toDateString()
+    ? d.toLocaleTimeString([],{hour12:false})
+    : d.toISOString().slice(0,10);};
+const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sign=el=>{el.classList.remove('up','down');};
+
+function spark(curve){
+  const svg=document.getElementById('spark');
+  if(!curve||curve.length<2){svg.innerHTML='';return;}
+  const ys=curve.map(p=>p[1]), lo=Math.min(...ys), hi=Math.max(...ys);
+  const span=(hi-lo)||1, W=600,H=96,pad=6;
+  const pts=curve.map((p,i)=>{
+    const x=(i/(curve.length-1))*W;
+    const y=H-pad-((p[1]-lo)/span)*(H-pad*2);
+    return x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+  const rising=ys[ys.length-1]>=ys[0];
+  const col=rising?'var(--up)':'var(--down)';
+  svg.innerHTML=
+    `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6"
+       vector-effect="non-scaling-stroke"/>`;
+}
+
+async function tick(){
+  let d;
+  try{
+    const r=await fetch('../state/dashboard.json?_='+Date.now(),{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    d=await r.json();
+  }catch(e){
+    document.getElementById('status').textContent='no data — is the bot running?';
+    document.getElementById('dot').classList.remove('on');
+    return;
+  }
+  const dot=document.getElementById('dot');
+  dot.classList.toggle('on', !!d.connected);
+  document.getElementById('status').textContent =
+    (d.connected?'live':'offline')+' · '+(d.mode||'paper')+' · '+(d.strategy||'');
+  document.getElementById('meta').textContent =
+    'updated '+clock(d.generated)+' · '+(d.n_trades||0)+' trades';
+
+  document.getElementById('banner').innerHTML = d.last_error
+    ? '<div class="warn">'+esc(d.last_error)+'</div>' : '';
+
+  document.getElementById('eq').textContent=money(d.equity);
+  const p=document.getElementById('pnl');
+  p.textContent=money(d.pnl_abs)+'  ('+fmt(d.pnl_pct,2)+'%)';
+  sign(p); p.classList.add(d.pnl_abs>=0?'up':'down');
+  const dy=document.getElementById('day');
+  dy.textContent=money(d.day_pnl_abs);
+  sign(dy); dy.classList.add(d.day_pnl_abs>=0?'up':'down');
+  document.getElementById('dd').textContent=fmt(d.drawdown_pct,2)+'%';
+  document.getElementById('np').textContent=d.n_positions??'—';
+  document.getElementById('net').textContent=money(d.net_exposure);
+  document.getElementById('gross').textContent=money(d.gross_exposure);
+
+  spark(d.curve);
+
+  // Show any market with a position OR a non-zero target: a market the bot
+  // wants but does not hold is exactly the discrepancy worth seeing.
+  const pos=Object.entries(d.positions||{}).filter(([,v])=>v.qty||v.target);
+  document.getElementById('pos').innerHTML=pos.map(([k,v])=>{
+    const val=(v.qty||0)*(v.price||0)*(v.mult||1);
+    const tg=v.target, off=tg!=null&&Math.abs(tg-(v.qty||0))>=1;
+    return `<tr><td>${esc(k)}</td><td class="r ${v.qty>0?'up':(v.qty<0?'down':'')}">${fmt(v.qty,0)}</td>
+      <td class="r ${off?'down':''}">${tg==null?'—':fmt(tg,0)}</td>
+      <td class="r">${fmt(v.price,4)}</td><td class="r">${money(val)}</td></tr>`;
+  }).join('');
+  document.getElementById('posEmpty').innerHTML=pos.length?'':'<div class="empty">No open positions.</div>';
+
+  const tr=d.trades||[];
+  document.getElementById('trades').innerHTML=tr.map(t=>
+    `<tr><td>${stamp(t.ts)}</td><td>${esc(t.symbol)}</td>
+     <td class="${t.side==='BUY'?'up':'down'}">${t.side}</td>
+     <td class="r">${fmt(t.qty,0)}</td><td class="r">${fmt(t.price,4)}</td>
+     <td class="r">${money(t.cost)}</td></tr>`).join('');
+  document.getElementById('trEmpty').innerHTML=tr.length?'':'<div class="empty">No trades yet.</div>';
+
+  const ac=d.activity||[];
+  document.getElementById('feed').innerHTML = ac.length ? ac.map(a=>
+    `<div><span class="t">${stamp(a.ts)}</span>
+     <span class="lv ${esc(a.level)}">${esc(a.level)}</span>
+     <span class="msg">${a.source?'<b>'+esc(a.source)+'</b> ':''}${esc(a.message)}</span></div>`
+  ).join('') : '<div class="empty">Nothing logged yet.</div>';
+}
+tick(); setInterval(tick, 3000);
+</script>
+</body>
+</html>

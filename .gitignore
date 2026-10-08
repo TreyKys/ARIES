@@ -22,3 +22,6 @@ data/
 models/
 
 # research scripts live in scripts/ and must not be collected as tests
+
+# live trading state written by ares/monitor.py (account data, not source)
+state/

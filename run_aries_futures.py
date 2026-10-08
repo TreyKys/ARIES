@@ -10,8 +10,11 @@ effectively uncorrelated legs (+0.007) which is what halves the drawdown.
     python run_aries_futures.py --replay --capital 25000
 
     # paper trade via Interactive Brokers (needs TWS/IB Gateway running):
-    python run_aries_futures.py --paper --capital 25000
-    python run_aries_futures.py --paper --strategy reversal --capital 25000
+    python run_aries_futures.py --paper --capital 25000           # observe only
+    python run_aries_futures.py --paper --capital 25000 --submit  # send orders
+
+    # live monitor (reads the state/dashboard.json that the above writes):
+    python scripts/serve_dashboard.py     # http://127.0.0.1:8787/monitor/
 
 READ BEFORE RUNNING WITH MONEY
   * Minimum viable capital is about $15,000. The book needs 6 markets and
@@ -28,6 +31,10 @@ READ BEFORE RUNNING WITH MONEY
   * Paper trading cannot validate the edge -- 57 years did that. What it
     verifies is fills, REAL commissions (cost sensitivity is severe here),
     contract rolls, and restart survival.
+  * Nothing in here adapts or "learns" from live results. That is deliberate:
+    every adaptive variant tested in this project made the measured result
+    worse (see docs/STRATEGY_RESEARCH.md). The dashboard exists so a HUMAN can
+    compare live behaviour against the replay and decide.
 """
 import argparse
 import logging
@@ -43,6 +50,7 @@ import pandas as pd
 from ares.combined import (MIN_VIABLE_CAPITAL, CapitalTooSmall, check_viable,
                            combined_signal, size_positions)
 from ares.ledger import Ledger, summarise
+from ares.monitor import Monitor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("aries.futures")
@@ -84,9 +92,17 @@ def load_history(folder="data/daily"):
     return px.mask(bad).dropna(axis=0, thresh=max(6, int(len(px.columns) * 0.7)))
 
 
-def run_replay(capital, target_vol, w_trend, top_k):
+def run_replay(capital, target_vol, w_trend, top_k, monitor=True):
     px = load_history()
     check_viable(capital, list(px.columns))
+    mon = Monitor(strategy="combined", capital=capital) if monitor else None
+    if mon:
+        mon.mode = "replay"
+        mon.connected = True
+        mon.log("INFO", "SYSTEM", f"replay start, ${capital:,.0f}, "
+                                  f"{len(px.columns)} markets",
+                ts=int(px.index[253].value // 1_000_000) if len(px) > 253
+                else None)
     log.info("replay: %d markets, %d days, %.1fyr", len(px.columns), len(px),
              (px.index[-1] - px.index[0]).days / 365.25)
     led = Ledger(capital)
@@ -122,10 +138,34 @@ def run_replay(capital, target_vol, w_trend, top_k):
                 if abs(dq) > 1e-9 and (abs(dq) >= band or tgt == 0.0
                                        or np.sign(tgt) != np.sign(cur)):
                     # 0.75bp round trip is the measured micro-futures cost
-                    led.trade(ts, c, dq, prices[c],
-                              cost=abs(dq) * prices[c] * 0.75e-4)
-        led.mark(ts, prices)
+                    fee = abs(dq) * prices[c] * 0.75e-4
+                    led.trade(ts, c, dq, prices[c], cost=fee)
+                    if mon:
+                        mon.record_trade(c, dq, prices[c], fee, ts=ts)
+        eq = led.mark(ts, prices)
+        if mon and i % 21 == 0:
+            mon.set_positions({c: {"qty": led.pos.get(c, 0.0),
+                                   "price": prices.get(c, 0.0)}
+                               for c in prices})
+            mon.mark(eq, ts=ts)
+            mon.flush()
     s = summarise(led)
+    if mon:
+        # Final state must be exact. The in-loop snapshot runs every 21 bars
+        # to keep the replay fast, which would otherwise leave the dashboard
+        # showing month-old positions beside a final equity figure.
+        mon.set_positions({c: {"qty": led.pos.get(c, 0.0),
+                               "price": prices.get(c, 0.0)}
+                           for c in prices})
+        mon.mark(led.equity(), ts=ts)
+        mon.log("INFO", "SYSTEM",
+                f"replay done: {s.ann_return_pct:+.2f}%/yr, Sharpe "
+                f"{s.sharpe:+.2f}, maxDD {s.max_drawdown_pct:.1f}%",
+                ts=ts)
+        mon.connected = False
+        mon.flush()
+        log.info("  dashboard state -> state/dashboard.json "
+                 "(serve with: python scripts/serve_dashboard.py)")
     log.info("=" * 66)
     log.info("  combined book replay | $%.0f capital, %.0f%% vol target",
              capital, target_vol * 100)
@@ -134,10 +174,22 @@ def run_replay(capital, target_vol, w_trend, top_k):
     log.info("=" * 66)
 
 
-def run_paper(capital, target_vol, w_trend, top_k, strategy):
-    """Paper trade through Interactive Brokers (TWS or IB Gateway must be up)."""
+def run_paper(capital, target_vol, w_trend, top_k, strategy,
+              interval=60, submit=False, allow_live=False):
+    """Paper trade through IBKR, feeding the live dashboard every cycle.
+
+    This runs as a LOOP, not a one-shot, because the point of the two-month
+    paper phase is to watch the things a backtest cannot check: real fills,
+    real commissions, contract rolls, and whether the process survives being
+    left alone. Each cycle writes state/dashboard.json, so the dashboard shows
+    live equity, live positions, every order, and the target-vs-actual gap.
+
+    Orders are submitted only with --submit. Without it this is a read-only
+    observer: it shows exactly what it WOULD do, which is the right default
+    for the first few sessions.
+    """
     try:
-        from ib_insync import IB, Future
+        from ib_insync import IB, Future, MarketOrder
     except ImportError:
         raise SystemExit(
             "ib_insync is required for --paper:  pip install ib_insync\n"
@@ -146,47 +198,140 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy):
             "(Configure > API > Enable ActiveX and Socket Clients).")
     px = load_history()
     check_viable(capital, list(px.columns))
-    ib = IB()
+
     host = os.getenv("IB_HOST", "127.0.0.1")
     port = int(os.getenv("IB_PORT", "7497"))      # 7497 paper, 7496 live
-    ib.connect(host, port, clientId=int(os.getenv("IB_CLIENT_ID", "11")))
-    log.info("connected to IBKR %s:%d", host, port)
-    if port == 7496:
-        log.warning("port 7496 is the LIVE port. Use 7497 for paper.")
+    if port == 7496 and not allow_live:
+        raise SystemExit(
+            "IB_PORT=7496 is the LIVE trading port. This runner refuses it "
+            "unless you pass --allow-live. Use 7497 for the paper account.")
 
-    contracts = {}
+    mon = Monitor(strategy=strategy, capital=capital)
+    mon.mode = "live" if port == 7496 else "paper"
+    mon.log("INFO", "SYSTEM",
+            f"start {mon.mode}, ${capital:,.0f}, strategy={strategy}, "
+            f"submit={'ON' if submit else 'OFF'}")
+    mon.flush()
+
+    ib = IB()
+    ib.connect(host, port, clientId=int(os.getenv("IB_CLIENT_ID", "11")))
+    mon.connected = True
+    log.info("connected to IBKR %s:%d", host, port)
+    mon.log("INFO", "IBKR", f"connected {host}:{port}")
+
+    contracts, tickers = {}, {}
     for sym, meta in UNIVERSE.items():
-        c = Future(symbol=sym, exchange=meta["exch"], currency="USD")
-        found = ib.reqContractDetails(c)
+        found = ib.reqContractDetails(
+            Future(symbol=sym, exchange=meta["exch"], currency="USD"))
         if not found:
             log.warning("no contract found for %s; skipping", sym)
+            mon.log("WARN", sym, "no contract found; market skipped")
             continue
-        # nearest expiry with volume: front month
-        contracts[sym] = sorted(
-            (f.contract for f in found),
-            key=lambda x: x.lastTradeDateOrContractMonth)[0]
+        # front month: nearest expiry. A roll is visible in the activity feed
+        # as this value changing, which is one of the things paper trading is
+        # meant to shake out.
+        con = sorted((f.contract for f in found),
+                     key=lambda x: x.lastTradeDateOrContractMonth)[0]
+        contracts[sym] = con
+        tickers[sym] = ib.reqMktData(con, "", False, False)
     log.info("resolved %d contracts", len(contracts))
+    mon.log("INFO", "IBKR", f"resolved {len(contracts)} contracts: "
+                            f"{', '.join(sorted(contracts))}")
     check_viable(capital, list(contracts))
 
-    w = w_trend if strategy == "combined" else (0.0 if strategy == "reversal" else 1.0)
+    w = w_trend
+    mult = {s: m["mult"] for s, m in UNIVERSE.items()}
+    vol_w = px.pct_change().rolling(60, min_periods=30).std() * np.sqrt(252)
+    vols = {c: float(vol_w[c].iloc[-1]) for c in px.columns
+            if np.isfinite(vol_w[c].iloc[-1])}
     sig = combined_signal(px, w_trend=w, top_k=top_k)
-    vol_w = (px.pct_change().rolling(60, min_periods=30).std() * np.sqrt(252)).iloc[-1]
-    prices = {}
-    for sym, con in contracts.items():
-        t = ib.reqMktData(con, "", False, False)
-        ib.sleep(2)
-        p = t.last if t.last and t.last > 0 else t.close
-        if p and p > 0:
-            prices[sym] = float(p)
-    want = size_positions(sig, prices, capital=capital, target_vol=target_vol,
-                          vols={k: float(vol_w.get(k, 0.2)) for k in prices},
-                          contract_multiplier={s: m["mult"]
-                                               for s, m in UNIVERSE.items()})
-    log.info("target book (%s): %s", strategy, want)
-    log.info("NOTE: orders are NOT submitted by this build. Review the target "
-             "book, then wire ib.placeOrder() once the sizing looks right on "
-             "your account.")
-    ib.disconnect()
+    day = None
+    try:
+        while True:
+            ib.sleep(2)                     # let the tickers populate
+            prices = {}
+            for sym, t in tickers.items():
+                p = t.last if (t.last and t.last > 0) else t.close
+                if p and p > 0:
+                    prices[sym] = float(p)
+            if not prices:
+                mon.log("WARN", "IBKR", "no live prices this cycle")
+                mon.flush(); ib.sleep(interval); continue
+
+            # Real account equity, not a simulated ledger. If the broker and
+            # my arithmetic ever disagree, the broker is right.
+            net_liq = capital
+            for v in ib.accountSummary():
+                if v.tag == "NetLiquidation":
+                    net_liq = float(v.value)
+            held = {p.contract.symbol: float(p.position) for p in ib.positions()
+                    if p.contract.symbol in contracts}
+
+            today = pd.Timestamp.utcnow().normalize()
+            if day is not None and today != day:
+                mon.roll_day()
+            day = today
+
+            want = size_positions(sig, prices, capital=net_liq,
+                                  target_vol=target_vol, vols=vols,
+                                  contract_multiplier=mult)
+            for sym in sorted(prices):
+                tgt = float(want.get(sym, 0))
+                cur = held.get(sym, 0.0)
+                dq = tgt - cur
+                # Same no-trade band as the backtest. Matching it matters:
+                # without it, whole-contract rounding churns the book and the
+                # measured fee bill was ~5%/yr of capital.
+                band = 0.34 * max(abs(tgt), abs(cur), 1e-9)
+                act = abs(dq) >= 1 and (abs(dq) >= band or tgt == 0.0
+                                        or np.sign(tgt) != np.sign(cur))
+                if not act:
+                    continue
+                if not submit:
+                    mon.log("INFO", sym, f"WOULD {'BUY' if dq > 0 else 'SELL'} "
+                                         f"{abs(dq):g} (have {cur:g}, "
+                                         f"want {tgt:g})")
+                    continue
+                order = MarketOrder("BUY" if dq > 0 else "SELL",
+                                    int(round(abs(dq))))
+                trade = ib.placeOrder(contracts[sym], order)
+                ib.sleep(3)
+                filled = sum(f.execution.shares for f in trade.fills)
+                if filled:
+                    avg = (sum(f.execution.shares * f.execution.price
+                               for f in trade.fills) / filled)
+                    comm = sum(getattr(f.commissionReport, "commission", 0.0) or 0.0
+                               for f in trade.fills)
+                    # Record the FILL, never the intent -- intent-based logs
+                    # are how a paper run convinces you of trades that did not
+                    # happen.
+                    mon.record_trade(sym, filled * (1 if dq > 0 else -1),
+                                     float(avg), float(comm),
+                                     note=trade.orderStatus.status)
+                else:
+                    mon.log("WARN", sym, f"order {trade.orderStatus.status}, "
+                                         f"no fill yet ({abs(dq):g} lots)")
+
+            mon.set_positions({s: {"qty": held.get(s, 0.0),
+                                   "price": prices.get(s, 0.0),
+                                   "target": float(want.get(s, 0)),
+                                   "mult": mult.get(s, 1.0)}
+                               for s in sorted(prices)})
+            mon.mark(net_liq)
+            mon.flush()
+            ib.sleep(interval)
+    except KeyboardInterrupt:
+        mon.log("INFO", "SYSTEM", "stopped by operator")
+    except Exception as e:                           # noqa: BLE001
+        # A crash must be visible ON THE DASHBOARD, not just in a terminal
+        # that nobody is looking at.
+        mon.last_error = f"{type(e).__name__}: {e}"
+        mon.log("ERROR", "SYSTEM", mon.last_error)
+        raise
+    finally:
+        mon.connected = False
+        mon.flush()
+        ib.disconnect()
 
 
 def main() -> int:
@@ -199,6 +344,13 @@ def main() -> int:
     p.add_argument("--target-vol", type=float, default=0.03)
     p.add_argument("--w-trend", type=float, default=0.5)
     p.add_argument("--top-k", type=int, default=3)
+    p.add_argument("--interval", type=int, default=60,
+                   help="seconds between paper-mode cycles")
+    p.add_argument("--submit", action="store_true",
+                   help="actually send orders (paper mode). Without this the "
+                        "runner only reports the orders it would send.")
+    p.add_argument("--allow-live", action="store_true",
+                   help="permit IB_PORT=7496, the LIVE trading port")
     a = p.parse_args()
     w = a.w_trend
     if a.strategy == "reversal":
@@ -209,7 +361,9 @@ def main() -> int:
         if a.replay:
             run_replay(a.capital, a.target_vol, w, a.top_k)
         elif a.paper:
-            run_paper(a.capital, a.target_vol, w, a.top_k, a.strategy)
+            run_paper(a.capital, a.target_vol, w, a.top_k, a.strategy,
+                      interval=a.interval, submit=a.submit,
+                      allow_live=a.allow_live)
         else:
             print("Specify --replay or --paper", file=sys.stderr)
             return 2

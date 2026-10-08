@@ -1102,3 +1102,45 @@ of the gap, but more markets means more overnight margin, i.e. more capital.
 measured Sharpe -0.11, a loss) and 8 diversified micro contracts need ~$11,150
 of overnight margin, so a 60%-utilisation budget requires about $18.6k.
 A $5,000 account is refused with the arithmetic in the error message.
+
+## Live monitoring (monitor/ + ares/monitor.py)
+
+`ares/monitor.py` collects run state and writes one JSON snapshot
+(`state/dashboard.json`) atomically, via `mkstemp` + `os.replace`, so a
+browser polling the file can never read a half-written one. `monitor/index.html`
+polls it every 3s and shows equity, P&L, drawdown, exposure, open positions
+against their targets, trade history, and a levelled activity feed.
+`scripts/serve_dashboard.py` serves it on 127.0.0.1:8787 with `no-store`.
+
+Three deliberate choices:
+
+- **Trades and activity are append-only**, capped at 500/300 rows. The record
+  of what the bot actually did is the input to the only check that matters
+  after this point: live behaviour against the replay.
+- **Fills, not intent.** In paper mode a trade row is written from
+  `trade.fills`, never from the order that was placed. Intent-based logs are
+  how a paper run convinces you of trades that never happened.
+- **Equity comes from the broker** (`NetLiquidation`), not from a local
+  ledger. When my arithmetic and the broker disagree, the broker is right.
+
+### It does not learn, and that is the finding
+
+Nothing adapts from live results. Every adaptive variant tested here measured
+WORSE than the fixed rule it replaced:
+
+| addition | before | after |
+|---|---|---|
+| grid trend filter | +4.4% | −14.0% |
+| dynamic leverage | +17.8% | −32.8% |
+| vol management | Sharpe 0.44 | 0.38 |
+| multi-horizon momentum | Sharpe 0.42 | 0.13 |
+| selectivity (2σ) | positive | negative |
+
+The pattern is the same each time: the adaptive layer is fitted on a few
+hundred effective observations, so it learns the sample rather than the
+market. The edge that survived 57 years survived because it is fixed. The
+monitor exists so a human can see drift and decide — not so the bot can
+retune itself into the noise.
+
+`state/` is gitignored: it holds live account state and must never enter the
+repository.
