@@ -952,3 +952,40 @@ and does not now; crypto funding carry paid 27-37%/yr in 2020-21 and pays 2-5%
 now (measured earlier in this document). Both decayed as participants arrived.
 That argues for newer or less-contested venues rather than better signals in
 mature ones -- but prop firms offer only the mature venues, which is the bind.
+
+## Best validated result: combining the two surviving edges
+
+Rather than hunting a bigger single edge, combine the two components that each
+passed significance on decades of data. Measured on the 57-market daily panel,
+57 years, 0.75bp costs, roll gaps blanked:
+
+| book | return/yr | vol | Sharpe | t | maxDD | DD/vol |
+|---|---|---|---|---|---|---|
+| trend (tsmom) only | +4.43% | 5.59% | +0.70 | 4.71 | 34.3% | 6.15 |
+| daily reversal only | +3.44% | 6.35% | +0.50 | 3.50 | 34.9% | 5.50 |
+| **50/50 combined** | +4.04% | 4.24% | **+0.84** | **5.37** | **18.9%** | 4.45 |
+
+Correlation between the two: **+0.007** -- effectively independent, which is
+why the combination lifts Sharpe 0.70 -> 0.84 while nearly HALVING max drawdown
+(34.3% -> 18.9%). At t=5.37 over 57 years this is the most solidly established
+directional result in this repo.
+
+### And it still does not reach the target
+
+| context | safe vol | return | $/month on $50k |
+|---|---|---|---|
+| 5% prop leash | 1.12% | 0.94%/yr | **$35** |
+| 10% leash | 2.25% | 1.89%/yr | $71 |
+| own money, 30% DD tolerance | 6.74% | 5.66%/yr | -- |
+
+The target of $600/month on a $50k account needs ~14.4%/yr at prop-safe size.
+At the measured DD/vol of 4.45x that requires **Sharpe 12.8**; at the measured
+Sharpe of 0.84 it requires **DD/vol 0.29** -- an almost straight equity line.
+Either way the gap is about **15x**, and it is a gap in RISK-ADJUSTED quality,
+which diversification improves only as sqrt(number of independent components).
+Closing 15x would need on the order of 200 genuinely uncorrelated edges of this
+quality; this project found two in ten families.
+
+That is the honest ceiling of what was found here. The combined book is real,
+significant and prop-compatible, and it is worth roughly $35/month on a $50k
+account at a survivable size -- not $600.
