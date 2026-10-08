@@ -20,3 +20,5 @@ __pycache__/
 # large datasets & trained models (regenerate via scripts/)
 data/
 models/
+
+# research scripts live in scripts/ and must not be collected as tests

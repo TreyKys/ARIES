@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 """Does floor-aware sizing solve the prop-account survival problem?
 
-RESULT: it solves SURVIVAL completely (0% of accounts die at k<=1.0) and does
-not solve EARNING (median return falls to ~0%/yr). Sizing down as you approach
-the kill line is a ratchet: a loss shrinks your size, which slows the recovery,
-so the guarantee of survival is paid for with the return.
+Rule tested: risk in proportion to the distance between equity and the kill
+line, target_vol = k * (equity - floor) / equity. Far from the line, bigger;
+near it, smaller. Profits widen the gap, so size grows on its own.
 
-The limit is arithmetic, and the simulation confirms it:
-    sustainable return  ~=  edge_quality * room / bad_streak_multiple
-With a 6% room, Sharpe 0.49 and bad streaks running 2.5x normal bumpiness, that
-is 0.49 * 6% / 2.5 = 1.2%/yr -- matching the measured 1.15% at the size where
-only 0.4% of accounts die. Earning 10%/yr under a 6% rule would need Sharpe ~4,
-which only market-neutral carry reaches, and carry needs spot that prop firms
-do not offer.
+RESULT: it solves SURVIVAL completely (0 deaths in 4,000 bootstrapped 3-year
+paths at k<=1.0, target still touched 56% of the time) and does NOT solve
+EARNING (median return falls to ~0%/yr). Sizing down after a loss is a ratchet:
+smaller size slows the recovery, so the survival guarantee is paid for out of
+the return.
 
-Practical consequence: use DIFFERENT sizing for the two phases. The evaluation
-is a retryable $69 bet, so constant ~6% vol is right there (64% pass, 25% bust).
-A funded account is not retryable, so floor-aware sizing is right there.
-"""
+The cap is arithmetic, and the simulation matches it:
+    sustainable return ~= edge_quality * room / bad_streak_multiple
+                        = 0.49 * 6% / 2.5 = 1.2%/yr
+against 1.15% measured at the size where only 0.4% of accounts die. Earning
+10%/yr under a 6% rule needs quality ~4, which only market-neutral carry
+reaches here (~3.5), and carry needs the spot leg prop firms do not offer.
 
-Rule: risk in proportion to the distance between equity and the kill line.
-   target_vol = k * (equity - floor) / equity
-Far from the line -> bigger. Near it -> smaller. Profits widen the gap, so size
-grows on its own. Compare against constant-volatility sizing.
+Practical consequence: use DIFFERENT sizing per phase. An evaluation is a
+retryable fee, so constant ~6% vol is right there (64% pass, 25% bust). A
+funded account is not retryable, so floor-aware sizing is right there.
 """
 import numpy as np, sys, csv
 sys.path.insert(0,'/home/user/ARIES')
