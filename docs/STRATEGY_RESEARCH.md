@@ -804,3 +804,59 @@ futures data. Sources checked in this environment:
 So the remaining step needs a user-supplied Databento API key. Everything else
 is built: `ares/xsreversal.py` on the audited ledger, roll-gap cleaning, an
 in-sample/out-of-sample harness, and the breakeven-cost metric.
+
+## Venue choice: cost dominates the drawdown leash
+
+A firm with a 10% max drawdown instead of 5% doubles the extractable return at a
+given Sharpe, so a wider leash looked like the best available lever. Searching
+for one changes the answer: **every firm offering a 10% leash is a CFD firm**
+(FTMO 10% static from initial balance with a 5% daily limit, The5ers 10%/4%,
+FundedNext 10%/5%), and CFD spreads destroy this strategy outright.
+
+Same strategy, same out-of-sample window, only the cost changed:
+
+| venue | round-trip cost | OOS return | Sharpe | DD/vol |
+|---|---|---|---|---|
+| CME micro Nasdaq (MNQ) | 0.34bp | **+43.6%** | **+3.11** | 0.88 |
+| CME micro S&P (MES) | 0.75bp | +22.7% | +1.80 | 1.06 |
+| CFD EURUSD-like | 1.67bp | **-13.9%** | -1.16 | 1.96 |
+| CFD gold-like | 2.17bp | **-29.0%** | -2.79 | 2.48 |
+| CFD index-like (US500) | 3.20bp | **-52.2%** | -6.15 | 3.35 |
+
+Resulting prop economics:
+
+| venue | leash | safe vol | %/yr | %/month | $/mo on $50k |
+|---|---|---|---|---|---|
+| MNQ futures | 5% | 5.65% | 17.56% | **1.36%** | **$658** |
+| MES futures | 5% | 4.73% | 8.49% | 0.68% | $318 |
+| any CFD firm | 10% | -- | LOSES | -- | -- |
+
+**A 10% leash on an edge that has gone negative is worth nothing.** Halving the
+cost from 0.75bp to 0.34bp roughly DOUBLED the return, so the venue criterion is
+the lowest commission on micro futures, not the widest drawdown allowance. That
+favours the cheap-CME-micro firms (Apex, Topstep, MyFundedFutures, Tradeify)
+over the 10%-leash CFD firms, and it corrects the earlier conclusion that a
+wider leash was the biggest available lever.
+
+Caveats: these are 1.2yr out-of-sample figures with wide error bars, so the
+LEVELS are provisional (the 15yr Databento pull settles them). The RELATIVE
+cost comparison is robust, since it is the same data at different cost
+assumptions. Also note For Traders offers 10%/5% on some futures accounts but
+states HFT is not permitted, and an hourly-rebalanced book making ~8,760 trades
+a year may attract that scrutiny even though it is not HFT in the sub-second
+sense -- worth confirming with any firm before paying.
+
+## "Train it to cut losing bags" -- already tested, and it backfires
+
+Adding an exit rule (stand aside while price is below an EMA) to the directional
+grid was worse in ALL 20 pair/length/split combinations, e.g. ETH +4.41% ->
+-14.02%. The mechanism: cutting the bag crystallises the loss and then sits out
+the recovery, and the recovery IS the edge.
+
+More to the point, the cross-sectional construction removes the problem rather
+than managing it. There is no directional bag to accumulate because the book is
+simultaneously long the laggards and short the leaders. The thing a smarter exit
+would be trained to avoid does not arise.
+
+Measured priority therefore favours cost (0.34bp vs 0.75bp roughly doubles the
+return) over learned exits (which made the comparable strategy 3x worse).
