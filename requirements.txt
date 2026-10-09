@@ -26,3 +26,8 @@ google-genai>=0.3.0
 pytest>=8.0.0
 scikit-learn>=1.4.0
 xlrd>=2.0.1
+
+# Interactive Brokers client for run_aries_futures.py --paper.
+# ib_async is the maintained continuation of ib_insync; the runner
+# accepts either, preferring this one.
+ib_async>=1.0.1

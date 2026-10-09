@@ -49,6 +49,8 @@ import pandas as pd
 
 from ares.combined import (MIN_VIABLE_CAPITAL, CapitalTooSmall, check_viable,
                            combined_signal, size_positions)
+from ares.ibkr import (classify_port, import_ib, live_port_refusal,
+                       ticker_price)
 from ares.ledger import Ledger, summarise
 from ares.monitor import Monitor
 from ares.publish import Publisher
@@ -198,27 +200,22 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
     observer: it shows exactly what it WOULD do, which is the right default
     for the first few sessions.
     """
-    try:
-        from ib_insync import IB, Future, MarketOrder
-    except ImportError:
-        raise SystemExit(
-            "ib_insync is required for --paper:  pip install ib_insync\n"
-            "You must also have TWS or IB Gateway running and logged into a "
-            "PAPER account, with API connections enabled "
-            "(Configure > API > Enable ActiveX and Socket Clients).")
+    IB, Future, MarketOrder, client = import_ib()
     px = load_history()
     check_viable(capital, list(px.columns))
 
     host = os.getenv("IB_HOST", "127.0.0.1")
-    port = int(os.getenv("IB_PORT", "7497"))      # 7497 paper, 7496 live
-    if port == 7496 and not allow_live:
-        raise SystemExit(
-            "IB_PORT=7496 is the LIVE trading port. This runner refuses it "
-            "unless you pass --allow-live. Use 7497 for the paper account.")
+    # TWS paper is 7497, IB Gateway paper is 4002. Both applications also have
+    # a LIVE port (7496 and 4001), which is refused below.
+    port = int(os.getenv("IB_PORT", "7497"))
+    refusal = live_port_refusal(port, allow_live)
+    if refusal:
+        raise SystemExit(refusal)
+    app, kind = classify_port(port)
 
     pub = Publisher()
     mon = Monitor(strategy=strategy, capital=capital, publisher=pub)
-    mon.mode = "live" if port == 7496 else "paper"
+    mon.mode = kind
     if pub.enabled:
         log.info("publishing to %s", pub.url)
     else:
@@ -232,8 +229,14 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
     ib = IB()
     ib.connect(host, port, clientId=int(os.getenv("IB_CLIENT_ID", "11")))
     mon.connected = True
-    log.info("connected to IBKR %s:%d", host, port)
-    mon.log("INFO", "IBKR", f"connected {host}:{port}")
+    log.info("connected to %s %s:%d (%s account) via %s",
+             app, host, port, kind, client)
+    mon.log("INFO", "IBKR", f"connected to {app} {host}:{port}, {kind} account")
+    if kind == "live":
+        log.warning("THIS IS A LIVE ACCOUNT. Orders %s be submitted.",
+                    "WILL" if submit else "will NOT")
+        mon.log("WARN", "IBKR", "LIVE account"
+                + (" with order submission ON" if submit else ", observing only"))
 
     contracts, tickers = {}, {}
     for sym, meta in UNIVERSE.items():
@@ -255,6 +258,30 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
                             f"{', '.join(sorted(contracts))}")
     check_viable(capital, list(contracts))
 
+    # Market data. A paper account usually has no real-time futures data
+    # subscription, in which case every price comes back nan and the loop
+    # would report "no live prices" forever with nothing saying why. Ask for
+    # real-time, and if nothing arrives fall back to delayed and SAY SO --
+    # delayed data is fine for a book that rebalances daily, but it must be a
+    # stated choice, not a silent one.
+    ib.sleep(4)
+    if not any(ticker_price(t) for t in tickers.values()):
+        log.warning("no real-time prices (the account most likely has no "
+                    "futures market data subscription); using DELAYED data")
+        mon.log("WARN", "IBKR", "no real-time data; switched to delayed")
+        ib.reqMarketDataType(3)                 # 3 = delayed, 4 = delayed-frozen
+        for sym, con in contracts.items():
+            tickers[sym] = ib.reqMktData(con, "", False, False)
+        ib.sleep(5)
+        if not any(ticker_price(t) for t in tickers.values()):
+            mon.log("ERROR", "IBKR", "no prices at all, real-time or delayed")
+            mon.flush(force_publish=True)
+            ib.disconnect()
+            raise SystemExit(
+                "No prices came back for any contract, real-time or delayed.\n"
+                "Check in TWS/Gateway that the contracts appear in a watchlist "
+                "and that API market data is enabled.")
+
     w = w_trend
     mult = {s: m["mult"] for s, m in UNIVERSE.items()}
     vol_w = px.pct_change().rolling(60, min_periods=30).std() * np.sqrt(252)
@@ -267,9 +294,9 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
             ib.sleep(2)                     # let the tickers populate
             prices = {}
             for sym, t in tickers.items():
-                p = t.last if (t.last and t.last > 0) else t.close
-                if p and p > 0:
-                    prices[sym] = float(p)
+                p = ticker_price(t)
+                if p is not None:
+                    prices[sym] = p
             if not prices:
                 mon.log("WARN", "IBKR", "no live prices this cycle")
                 mon.flush(); ib.sleep(interval); continue
