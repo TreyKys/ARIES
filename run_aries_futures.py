@@ -55,6 +55,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import numpy as np
 import pandas as pd
 
+from ares.combined_backtest import backtest
 from ares.combined import (MIN_VIABLE_CAPITAL, CapitalTooSmall, check_viable,
                            combined_signal, size_positions)
 from ares.ibkr import (classify_port, import_ib, live_port_refusal,
@@ -118,50 +119,25 @@ def run_replay(capital, target_vol, w_trend, top_k, monitor=True):
                 else None)
     log.info("replay: %d markets, %d days, %.1fyr", len(px.columns), len(px),
              (px.index[-1] - px.index[0]).days / 365.25)
-    led = Ledger(capital)
-    vol_w = px.pct_change().rolling(60, min_periods=30).std() * np.sqrt(252)
-    mult = {s: m["mult"] for s, m in UNIVERSE.items()}
-    for i in range(253, len(px)):
-        win = px.iloc[: i + 1]
-        ts = int(win.index[-1].value // 1_000_000)
-        prices = {c: float(win[c].iloc[-1]) for c in win.columns
-                  if np.isfinite(win[c].iloc[-1])}
-        # Rebalance DAILY. The reversal leg's edge lives at a one-day horizon
-        # (lookback=1, hold=1 in the validated test); rebalancing monthly
-        # discards it and measured Sharpe +0.22 against +0.82 for the same
-        # 8-market universe rebalanced daily. The trend leg moves slowly so
-        # daily rebalancing costs it little extra turnover.
-        if True:
-            sig = combined_signal(win, w_trend=w_trend, top_k=top_k)
-            vols = {c: float(vol_w[c].iloc[i]) for c in win.columns
-                    if np.isfinite(vol_w[c].iloc[i])}
-            want = size_positions(sig, prices, capital=led.equity() or capital,
-                                  target_vol=target_vol, vols=vols,
-                                  contract_multiplier=mult)
-            for c in prices:
-                tgt = want.get(c, 0) * mult.get(c, 1.0)
-                cur = led.pos.get(c, 0.0)
-                dq = tgt - cur
-                # No-trade band. Without it, daily vol and equity drift flip
-                # whole-contract counts between n and n+-1 endlessly: measured
-                # $31,480 of fees on a $25k account over 26yr (~5%/yr of
-                # capital). Only act when the change is a real signal change,
-                # not rounding jitter.
-                band = 0.34 * max(abs(tgt), abs(cur), 1e-9)
-                if abs(dq) > 1e-9 and (abs(dq) >= band or tgt == 0.0
-                                       or np.sign(tgt) != np.sign(cur)):
-                    # 0.75bp round trip is the measured micro-futures cost
-                    fee = abs(dq) * prices[c] * 0.75e-4
-                    led.trade(ts, c, dq, prices[c], cost=fee)
-                    if mon:
-                        mon.record_trade(c, dq, prices[c], fee, ts=ts)
-        eq = led.mark(ts, prices)
+    def _trade(ts, c, dq, price, fee):
+        if mon:
+            mon.record_trade(c, dq, price, fee, ts=ts)
+
+    def _mark(i, ts, eq, prices, led):
         if mon and i % 21 == 0:
             mon.set_positions({c: {"qty": led.pos.get(c, 0.0),
                                    "price": prices.get(c, 0.0)}
                                for c in prices})
             mon.mark(eq, ts=ts)
             mon.flush()
+
+    mult = {s_: m["mult"] for s_, m in UNIVERSE.items()}
+    led = backtest(px, mult, capital=capital, target_vol=target_vol,
+                   w_trend=w_trend, top_k=top_k,
+                   on_trade=_trade, on_mark=_mark)
+    ts = int(px.index[-1].value // 1_000_000)
+    prices = {c: float(px[c].iloc[-1]) for c in px.columns
+              if np.isfinite(px[c].iloc[-1])}
     s = summarise(led)
     if mon:
         # Final state must be exact. The in-loop snapshot runs every 21 bars

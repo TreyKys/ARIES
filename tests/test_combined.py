@@ -83,3 +83,62 @@ def test_sizing_returns_whole_contracts_only():
                          vols=vols, contract_multiplier=mult)
     assert all(isinstance(v, int) for v in pos.values())
     assert all(abs(v) <= 3 for v in pos.values())
+
+
+# --- volatility floor -------------------------------------------------------
+# Position size is inversely proportional to the volatility estimate, so a
+# collapsed estimate asks for an unbounded position. Measured: with the
+# per-market contract cap lifted, one stale series took a 63-market book to
+# 970% volatility and ruin. The cap normally hides it, which is what makes it
+# dangerous -- it stays invisible until someone raises the cap.
+
+def _sig(markets):
+    from ares.combined import Signal
+    return Signal(weights={m: 1.0 for m in markets})
+
+
+def test_collapsed_vol_estimate_cannot_take_an_unbounded_position():
+    markets = [f"M{i}" for i in range(8)]
+    prices = {m: 100.0 for m in markets}
+    vols = {m: 0.20 for m in markets}
+    vols["M0"] = 1e-9                      # stale / halted market
+    mult = {m: 1.0 for m in markets}
+    unfloored = size_positions(_sig(markets), prices, capital=1_000_000,
+                               target_vol=0.03, vols=vols,
+                               contract_multiplier=mult,
+                               max_contracts_per_market=10**9,
+                               vol_floor_frac=0.0)
+    floored = size_positions(_sig(markets), prices, capital=1_000_000,
+                             target_vol=0.03, vols=vols,
+                             contract_multiplier=mult,
+                             max_contracts_per_market=10**9,
+                             vol_floor_frac=0.25)
+    # without a floor the stale market dwarfs every healthy one
+    assert unfloored["M0"] > 1000 * unfloored["M1"]
+    # with one, it is bounded to a small multiple of a normal position
+    assert floored["M0"] <= 5 * floored["M1"]
+
+
+def test_vol_floor_leaves_healthy_markets_untouched():
+    markets = [f"M{i}" for i in range(8)]
+    prices = {m: 100.0 for m in markets}
+    vols = {m: 0.20 for m in markets}
+    mult = {m: 1.0 for m in markets}
+    kw = dict(capital=500_000, target_vol=0.03, vols=vols,
+              contract_multiplier=mult, max_contracts_per_market=10**9)
+    assert (size_positions(_sig(markets), prices, vol_floor_frac=0.0, **kw)
+            == size_positions(_sig(markets), prices, vol_floor_frac=0.25, **kw))
+
+
+def test_floor_is_relative_so_a_low_vol_universe_is_not_penalised():
+    """An FX-only book is genuinely quiet; the floor must not shrink it."""
+    markets = [f"M{i}" for i in range(8)]
+    prices = {m: 1.1 for m in markets}
+    quiet = {m: 0.05 for m in markets}
+    mult = {m: 10_000.0 for m in markets}
+    kw = dict(capital=500_000, target_vol=0.03, contract_multiplier=mult,
+              max_contracts_per_market=10**9)
+    assert (size_positions(_sig(markets), prices, vols=quiet,
+                           vol_floor_frac=0.25, **kw)
+            == size_positions(_sig(markets), prices, vols=quiet,
+                              vol_floor_frac=0.0, **kw))

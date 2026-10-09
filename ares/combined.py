@@ -84,14 +84,25 @@ def trend_weights(px: pd.DataFrame, lookback: int = 252) -> pd.Series:
 
 
 def reversal_weights(px: pd.DataFrame, lookback: int = 1,
-                     top_k: int = 3) -> pd.Series:
+                     top_k: int = 3, vol_window: int = 0) -> pd.Series:
     """Long the biggest laggards vs the basket, short the biggest leaders.
 
     The common market factor is removed by demeaning across the universe, so
     what is ranked is the idiosyncratic move -- the part that reverts.
+
+    vol_window > 0 ranks on VOLATILITY-NORMALISED moves instead of raw ones.
+    This matters as soon as the universe spans markets of unequal volatility.
+    Ranking raw returns, the loudest market always occupies the extremes: with
+    natural gas moving more than 5% on 13.7% of days and ether on 18.2%, the
+    reversal leg stops being a bet on dislocation and becomes a standing bet
+    against whatever those two just did -- which is news, and news does not
+    revert. A z-score puts a 5% gas move and a 0.5% euro move on one scale.
     """
     r = px.iloc[-1] / px.iloc[-1 - lookback] - 1.0
-    r = r.dropna()
+    if vol_window > 0 and len(px) > vol_window + 1:
+        sd = px.iloc[-vol_window - 1:].pct_change().std()
+        r = r / sd.where(sd > 0)
+    r = r.replace([np.inf, -np.inf], np.nan).dropna()
     if len(r) < MIN_MARKETS:
         return pd.Series(0.0, index=px.columns)
     r = r - r.mean()
@@ -105,13 +116,13 @@ def reversal_weights(px: pd.DataFrame, lookback: int = 1,
 
 def combined_signal(px: pd.DataFrame, *, trend_lookback: int = 252,
                     reversal_lookback: int = 1, top_k: int = 3,
-                    w_trend: float = 0.5) -> Signal:
+                    w_trend: float = 0.5, vol_window: int = 0) -> Signal:
     """Blend the two legs. 50/50 by default -- deliberately NOT optimised,
     since fitted weights are how the earlier phantoms were produced."""
     if len(px) <= trend_lookback + 1:
         return Signal(asof=px.index[-1] if len(px) else None)
     t = trend_weights(px, trend_lookback)
-    r = reversal_weights(px, reversal_lookback, top_k)
+    r = reversal_weights(px, reversal_lookback, top_k, vol_window)
     w = (w_trend * t + (1.0 - w_trend) * r).clip(-1.0, 1.0)
     return Signal(weights=w.to_dict(), trend=t.to_dict(),
                   reversal=r.to_dict(), asof=px.index[-1])
@@ -121,21 +132,33 @@ def size_positions(sig: Signal, prices: Dict[str, float], *,
                    capital: float, target_vol: float,
                    vols: Dict[str, float],
                    contract_multiplier: Dict[str, float],
-                   max_contracts_per_market: int = 3) -> Dict[str, int]:
+                   max_contracts_per_market: int = 3,
+                   vol_floor_frac: float = 0.25) -> Dict[str, int]:
     """Convert weights into whole contract counts at a risk budget.
 
     Each market is scaled to an equal volatility contribution, then rounded to
     whole contracts -- futures cannot be traded fractionally, and ignoring that
     is a common way backtests overstate achievable precision.
+
+    vol_floor_frac floors each market's volatility estimate at that fraction
+    of the median across live markets. Position size is inversely proportional
+    to the estimate, so an estimate that collapses -- a halted market, a
+    holiday, a run of forward-filled prices -- asks for an unbounded position.
+    Measured: with the per-market cap lifted, one stale series took a
+    63-market book to 970% volatility and ruin. The contract cap normally
+    hides this, which is exactly what makes it dangerous: it is invisible
+    until someone raises the cap for a larger account.
     """
     live = [m for m, w in sig.weights.items()
             if w and m in prices and m in vols and vols[m] > 0]
     if not live:
         return {}
+    med = float(np.median([vols[m] for m in live]))
+    floor = med * vol_floor_frac if med > 0 else 0.0
     per_market_vol = target_vol / np.sqrt(len(live))
     out: Dict[str, int] = {}
     for m in live:
-        notional = (per_market_vol * capital) / vols[m]
+        notional = (per_market_vol * capital) / max(vols[m], floor)
         mult = contract_multiplier.get(m, 1.0)
         contracts = notional / max(prices[m] * mult, 1e-9)
         n = int(np.clip(round(contracts * sig.weights[m]),

@@ -970,6 +970,17 @@ why the combination lifts Sharpe 0.70 -> 0.84 while nearly HALVING max drawdown
 (34.3% -> 18.9%). At t=5.37 over 57 years this is the most solidly established
 directional result in this repo.
 
+> **CORRECTION (2026-10-09).** This number has been cited as evidence that a
+> wider universe would raise the live book's Sharpe. Decomposed, it does not
+> support that. It was measured on a 57-MARKET panel over 57 YEARS, most of it
+> untradeable at micro size by a small account, and its trend leg scored 0.70.
+> Measured on tradeable markets over 2000-2026, the trend leg scores **+0.11,
+> out-of-sample +0.00** -- the entire modern edge is the reversal leg. So 0.84
+> is substantially an artifact of an era when trend-following worked, and is
+> not a target reachable today by adding markets. Adding every tradeable CME
+> micro was tested directly and did not help: the added markets measure
+> Sharpe +0.13 (OOS -0.03) as their own book. See docs/UNIVERSE_WIDENING.md.
+
 ### And it still does not reach the target
 
 | context | safe vol | return | $/month on $50k |
