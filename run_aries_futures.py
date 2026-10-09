@@ -23,9 +23,17 @@ READ BEFORE RUNNING WITH MONEY
     ares.combined.check_viable() REFUSES undercapitalised configurations rather
     than warning, because silently running one turns a validated strategy into
     a losing one.
-  * This book HOLDS OVERNIGHT. Most futures prop firms (Apex, Topstep,
-    Tradeify, MyFundedFutures) require flat positions at the close, so it
-    cannot run there. A normal broker has no such rule, which is why IBKR.
+  * This book HOLDS OVERNIGHT. Almost every futures prop firm (Apex,
+    Topstep, Tradeify, MyFundedFutures, Take Profit Trader, Bulenox, Lucid)
+    force-liquidates before the daily close, so it cannot run there at all.
+    Exactly one surveyed firm permits overnight and weekend holds on a funded
+    account -- Phidias Premium -- and measuring the strategy against its
+    actual rules gives an expected value near zero: its evaluation is a 2:1
+    bet (make $6,000 before losing $3,000), which a Sharpe-0.41 book passes
+    about a third of the time, the same as a coin weighted by that ratio
+    alone. The gate needs roughly Sharpe 1.2 to pay. See docs/PROP_FIRMS.md
+    and scripts/prop_firm_study.py. A broker has no such gate, which is why
+    IBKR -- but note IBKR is a BROKER, so the capital is yours, not theirs.
   * Expect roughly 4%/yr at natural size on own capital. It is not fast, and
     the fast variants were tested and rejected (see docs/STRATEGY_RESEARCH.md).
   * Paper trading cannot validate the edge -- 57 years did that. What it
@@ -184,6 +192,7 @@ def run_replay(capital, target_vol, w_trend, top_k, monitor=True):
     log.info("  %s", s)
     log.info("  fees paid $%.2f", s.fees_paid)
     log.info("=" * 66)
+    return led
 
 
 def run_paper(capital, target_vol, w_trend, top_k, strategy,
