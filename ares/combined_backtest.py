@@ -18,7 +18,7 @@ from typing import Callable, Dict, Optional
 import numpy as np
 import pandas as pd
 
-from .combined import combined_signal, size_positions
+from .combined import Signal, combined_signal, size_positions
 from .ledger import Ledger
 
 # Measured round-trip cost for CME micro futures: commission plus one tick on
@@ -38,6 +38,7 @@ def backtest(px: pd.DataFrame, mult: Dict[str, float], *, capital: float,
              max_contracts: int = 3, warmup: int = 253,
              trend_lookback: int = 252, vol_window: int = 0,
              mask_zero_returns: bool = False, vol_floor_frac: float = 0.25,
+             signal_fn=None, signal_window: Optional[int] = None,
              cost_bps: float = COST_BPS,
              on_trade: Optional[Callable] = None,
              on_mark: Optional[Callable] = None) -> Ledger:
@@ -71,7 +72,10 @@ def backtest(px: pd.DataFrame, mult: Dict[str, float], *, capital: float,
     # two rows (the last, and the one trend_lookback back), so a fixed window
     # gives IDENTICAL results while turning an O(n^2) loop into O(n). On the
     # 56-year panel the growing slice was the entire cost of the backtest.
-    need = trend_lookback + 2
+    # signal_fn lets a research script swap in any candidate edge while
+    # keeping the identical sizing, cost and ledger path, so two edges are
+    # never compared across two different backtests.
+    need = signal_window or (trend_lookback + 2)
     for i in range(warmup, len(px)):
         win = px.iloc[max(0, i + 1 - need): i + 1]
         ts = int(win.index[-1].value // 1_000_000)
@@ -79,9 +83,14 @@ def backtest(px: pd.DataFrame, mult: Dict[str, float], *, capital: float,
                   if np.isfinite(win[c].iloc[-1])}
         if not prices:
             continue
-        sig = combined_signal(win, w_trend=w_trend, top_k=top_k,
-                              trend_lookback=trend_lookback,
-                              vol_window=vol_window)
+        if signal_fn is None:
+            sig = combined_signal(win, w_trend=w_trend, top_k=top_k,
+                                  trend_lookback=trend_lookback,
+                                  vol_window=vol_window)
+        else:
+            w = signal_fn(win, top_k)
+            sig = Signal(weights={k: float(v) for k, v in w.items() if v},
+                         asof=win.index[-1])
         vols = {c: float(vol_w[c].iloc[i]) for c in win.columns
                 if np.isfinite(vol_w[c].iloc[i])}
         want = size_positions(sig, prices, capital=led.equity() or capital,

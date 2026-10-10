@@ -87,9 +87,10 @@ PHIDIAS_150K = Rules(
     splits=(0.75, 0.80, 0.85, 0.90, 1.00))
 
 
-def strategy_daily_returns(capital: float = 25_000.0) -> np.ndarray:
+def strategy_daily_returns(capital: float = 25_000.0,
+                           w_trend: float = 0.5) -> np.ndarray:
     """The replay's own daily returns. The ledger is the only source."""
-    led = run_replay(capital, target_vol=0.03, w_trend=0.5, top_k=3,
+    led = run_replay(capital, target_vol=0.03, w_trend=w_trend, top_k=3,
                      monitor=False)
     eq = np.array([e for _, e in led.curve], dtype=float)
     r = np.diff(eq) / eq[:-1]
@@ -252,8 +253,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--paths", type=int, default=2000)
     ap.add_argument("--horizon", type=int, default=252)
+    ap.add_argument("--w-trend", type=float, default=0.5,
+                    help="0.0 = reversal only, the book after dropping the "
+                         "trend leg")
     a = ap.parse_args()
-    r = strategy_daily_returns()
+    r = strategy_daily_returns(w_trend=a.w_trend)
     print(f"strategy: {len(r)} daily returns, "
           f"{len(r)/TRADING_DAYS:.1f} years of them")
     # Does a LONGER evaluation at lower volatility help? Phidias sets a
