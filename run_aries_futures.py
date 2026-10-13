@@ -60,7 +60,9 @@ from ares.combined import (MIN_VIABLE_CAPITAL, CapitalTooSmall, check_viable,
                            combined_signal, size_positions)
 from ares.ibkr import (classify_port, import_ib, live_port_refusal,
                        ticker_price)
+from ares.costs import cheapest
 from ares.ledger import Ledger, summarise
+from ares.ticket import build_ticket, format_ticket
 from ares.monitor import Monitor
 from ares.publish import Publisher
 
@@ -132,8 +134,17 @@ def run_replay(capital, target_vol, w_trend, top_k, monitor=True):
             mon.flush()
 
     mult = {s_: m["mult"] for s_, m in UNIVERSE.items()}
+
+    # Charge what a Phidias account actually pays: a fixed dollar commission
+    # per contract plus half the spread, from the firm's published schedule
+    # (ares/costs.py). The old flat 0.75bp-per-side rate understated the cost
+    # of this book badly, because it holds its most contracts in the small
+    # FX micros, where a fixed commission is several times dearer per dollar.
+    def _cost(sym, units, price):
+        return (units / mult[sym]) * cheapest(sym).side_usd()
+
     led = backtest(px, mult, capital=capital, target_vol=target_vol,
-                   w_trend=w_trend, top_k=top_k,
+                   w_trend=w_trend, top_k=top_k, cost_fn=_cost,
                    on_trade=_trade, on_mark=_mark)
     ts = int(px.index[-1].value // 1_000_000)
     prices = {c: float(px[c].iloc[-1]) for c in px.columns
@@ -364,12 +375,100 @@ def run_paper(capital, target_vol, w_trend, top_k, strategy,
         ib.disconnect()
 
 
+# Yahoo symbols for the SAME series the history files hold, so today's move
+# is measured on the instrument the signal was built on.
+YAHOO = {"SPX": "^GSPC", "NDX": "^IXIC", "DJI": "^DJI", "GOLD": "GC=F",
+         "SILVER": "SI=F", "WTI": "CL=F", "EURUSD": "EURUSD=X",
+         "AUDUSD": "AUDUSD=X"}
+
+
+def fetch_quotes():
+    """Latest price per tradeable symbol. A failure excludes that market for
+    the day rather than inventing a price."""
+    import json
+    import urllib.parse
+    import urllib.request
+    out = {}
+    for sym, meta in UNIVERSE.items():
+        ysym = YAHOO.get(meta["data"])
+        if not ysym:
+            continue
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/"
+               f"{urllib.parse.quote(ysym)}?range=1d&interval=5m")
+        try:
+            d = json.loads(urllib.request.urlopen(urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0"}), timeout=20).read())
+            out[sym] = float(d["chart"]["result"][0]["meta"]["regularMarketPrice"])
+        except Exception as e:                            # noqa: BLE001
+            log.warning("no quote for %s (%s): %s", sym, ysym, e)
+    return out
+
+
+def run_ticket(equity, target_vol, w_trend, top_k,
+               positions_path="state/positions.json"):
+    """Print today's orders for MANUAL entry. Sends nothing, ever.
+
+    Phidias permits only semi-automated software where the trader places and
+    manages every order, so on a prop account this is the whole interface:
+    run it about ten minutes before the 16:00 New York close, type the orders
+    into Tradovate or Rithmic, then run --ticket-filled to record them.
+    """
+    import json
+    px = load_history()
+    pos_file = Path(positions_path)
+    positions = json.loads(pos_file.read_text()) if pos_file.exists() else {}
+    quotes = fetch_quotes()
+    mult = {s_: m["mult"] for s_, m in UNIVERSE.items()}
+    t = build_ticket(px, quotes, equity=equity, positions=positions,
+                     mult=mult, asof=pd.Timestamp.now(tz="UTC").tz_localize(None),
+                     target_vol=target_vol, w_trend=w_trend, top_k=top_k)
+    print(format_ticket(t))
+    Path("state").mkdir(exist_ok=True)
+    Path("state/ticket.json").write_text(json.dumps(t.as_dict(), indent=2))
+    mon = Monitor(strategy="reversal" if w_trend == 0 else "combined",
+                  capital=equity, publisher=Publisher())
+    mon.mode = "ticket"
+    mon.connected = True
+    for o in t.orders:
+        mon.log("TICKET", o.symbol, f"{o.side} {o.qty} (have {o.have:+d}, "
+                                    f"want {o.want:+d}) -- place manually")
+    for w in t.warnings:
+        mon.log("WARN", "TICKET", w)
+    mon.set_positions({k: {"qty": float(positions.get(k, 0)), "target": float(v),
+                           "price": float(quotes.get(k, 0) or 0),
+                           "mult": mult.get(k, 1.0)}
+                       for k, v in t.targets.items()})
+    mon.mark(equity)
+    mon.flush(force_publish=True)
+    return t
+
+
+def record_ticket_filled(positions_path="state/positions.json"):
+    """After placing today's ticket by hand, adopt its targets as positions."""
+    import json
+    t = json.loads(Path("state/ticket.json").read_text())
+    Path(positions_path).write_text(json.dumps(t["targets"], indent=2))
+    print(f"recorded positions from the {t['asof']} ticket: {t['targets']}")
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--replay", action="store_true")
     p.add_argument("--paper", action="store_true")
+    p.add_argument("--ticket", action="store_true",
+                   help="print today's orders for MANUAL entry (Phidias-"
+                        "compliant: sends nothing)")
+    p.add_argument("--ticket-filled", action="store_true",
+                   help="record that today's ticket was placed by hand")
+    p.add_argument("--equity", type=float, default=None,
+                   help="current account balance, for --ticket")
+    # Reversal-only is the default: the trend leg measured no edge in the
+    # modern era (Sharpe +0.11-0.14, out-of-sample ~0) and every increment of
+    # trend weight lowered the book's Sharpe. Under real per-contract costs
+    # the two are about level (0.35 vs 0.34), so this is the simpler book at
+    # no measured cost. See docs/SECOND_EDGE_SEARCH.md.
     p.add_argument("--strategy", choices=["combined", "reversal", "trend"],
-                   default="combined")
+                   default="reversal")
     p.add_argument("--capital", type=float, default=25_000.0)
     p.add_argument("--target-vol", type=float, default=0.03)
     p.add_argument("--w-trend", type=float, default=0.5)
@@ -388,6 +487,16 @@ def main() -> int:
     elif a.strategy == "trend":
         w = 1.0
     try:
+        if a.ticket_filled:
+            record_ticket_filled()
+            return 0
+        if a.ticket:
+            if not a.equity:
+                print("--ticket needs --equity (your account balance)",
+                      file=sys.stderr)
+                return 2
+            run_ticket(a.equity, a.target_vol, w, a.top_k)
+            return 0
         if a.replay:
             run_replay(a.capital, a.target_vol, w, a.top_k)
         elif a.paper:
@@ -395,7 +504,7 @@ def main() -> int:
                       interval=a.interval, submit=a.submit,
                       allow_live=a.allow_live)
         else:
-            print("Specify --replay or --paper", file=sys.stderr)
+            print("Specify --replay, --paper or --ticket", file=sys.stderr)
             return 2
     except CapitalTooSmall as e:
         log.error("REFUSING TO RUN: %s", e)

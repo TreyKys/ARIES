@@ -39,6 +39,7 @@ def backtest(px: pd.DataFrame, mult: Dict[str, float], *, capital: float,
              trend_lookback: int = 252, vol_window: int = 0,
              mask_zero_returns: bool = False, vol_floor_frac: float = 0.25,
              signal_fn=None, signal_window: Optional[int] = None,
+             cost_fn: Optional[Callable] = None,
              cost_bps: float = COST_BPS,
              on_trade: Optional[Callable] = None,
              on_mark: Optional[Callable] = None) -> Ledger:
@@ -105,7 +106,11 @@ def backtest(px: pd.DataFrame, mult: Dict[str, float], *, capital: float,
             band = NO_TRADE_BAND * max(abs(tgt), abs(cur), 1e-9)
             if abs(dq) > 1e-9 and (abs(dq) >= band or tgt == 0.0
                                    or np.sign(tgt) != np.sign(cur)):
-                fee = abs(dq) * prices[c] * cost_bps
+                # cost_fn(symbol, units, price) -> USD lets the caller charge
+                # what a futures account actually pays: dollars PER CONTRACT,
+                # which a flat bp rate misstates by up to 2x either way.
+                fee = (cost_fn(c, abs(dq), prices[c]) if cost_fn is not None
+                       else abs(dq) * prices[c] * cost_bps)
                 led.trade(ts, c, dq, prices[c], cost=fee)
                 if on_trade:
                     on_trade(ts, c, dq, prices[c], fee)

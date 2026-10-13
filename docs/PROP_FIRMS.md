@@ -1,5 +1,13 @@
 # Prop firms that allow overnight holds — and whether ours can use one
 
+> **CORRECTION (2026-10-13).** The expected values below (+$400 to +$650
+> per attempt) are too optimistic, for two reasons found later: they checked
+> the drawdown only at the end of each day, whereas Phidias liquidates the
+> moment the floor is touched intraday; and they used a flat cost model,
+> whereas Phidias charges per contract, which costs this book far more.
+> Redone with both corrections, EV is about **−$75 per attempt**. See
+> docs/FEES_AND_VENUE.md, which also covers the venue that changes the answer.
+
 **Verdict: one firm qualifies on the rules. The strategy still fails its
 economics, and the reason is the strategy, not the firm.**
 
