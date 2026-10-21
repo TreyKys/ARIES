@@ -123,3 +123,43 @@ book runs at 8%. Funded: the 3% open-risk cap binds, so stops fit inside 2.5%.
 At the blended ~0.35bp, the realistic figure is **about +$900 per attempt**,
 lower than the earlier +$1,391-1,646, which assumed the same vol in both phases
 and did not account for stops inside the 3% cap.
+
+## Speed, and account size (`scripts/fundednext_speed.py`)
+
+Costs at FundedNext's $3/lot (blended 0.35bp/side), challenge 8%, funded 6%,
+up to three years allowed per phase.
+
+**Time to get paid is long.** Of attempts that pass (42%), the median takes
+**550 calendar days** to be funded -- about 18 months, first payout ~19
+months. Only 2.8% of attempts are funded within 6 months, 11.7% within 12.
+This corrects "about a year" stated earlier.
+
+The reason: the book's expected return is small (net Sharpe ~0.2), so it would
+take years to make 8% + 5% on drift alone. Passing is driven mostly by the
+swings; the edge raises the odds (from ~33% at zero edge to ~42%) and the
+funded payouts, not the speed.
+
+Speed can be bought with volatility, at a modest cost in expected value:
+
+| challenge vol | pass | median days to funded | funded < 6 months | EV |
+|---|---|---|---|---|
+| 6% | 34% | 761 | 0.6% | +$858 |
+| **8%** | **42%** | **550** | 2.8% | **+$1,242** |
+| 10% | 38% | 376 | 5.5% | +$959 |
+| 12% | 37% | 276 | 10.5% | +$973 |
+| 15% | 34% | 192 | 15.8% | +$901 |
+
+Above ~12% the challenge stops (sized inside 4.5%) sit closer than ~2.5 daily
+moves and will be hit routinely, which this simulation does not model.
+
+**Account size.** Payouts scale with the account; fees almost do:
+
+| size | price swap-free | EV | EV / price |
+|---|---|---|---|
+| $25,000 | $219.99 | +$242 | 110% (EAs allowed) |
+| $50,000 | $329.99 | +$594 | 180% |
+| **$100,000** | **$604.99** | **+$1,242** | **205%** |
+| $200,000 | $1,209.99 | +$2,484 | 205% |
+
+$100k and $200k give the most per dollar of fee. Below $50k a bot may trade,
+but the value per dollar roughly halves.
