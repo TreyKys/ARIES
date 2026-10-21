@@ -87,3 +87,39 @@ alone is worth. The edge is doing real work here, not only the contract.
 | swap-free covers all 7 (incl. NZD, CAD, CHF, JPY pairs) | any swap reintroduces the FTMO problem |
 | EA "add-on" cost | a recurring fee comes straight off EV |
 | copying the same EA across your own accounts | decides whether slots can scale |
+
+---
+
+## Update 2026-10-21: verified rules, and the manual ticket
+
+From FundedNext's Stellar 2-Step help article and payout pages:
+
+| rule | consequence |
+|---|---|
+| **"EA usage is not permitted on account sizes of $50,000 and above"** | a $100k account cannot run a bot. Built `run_aries_fx.py`: prints the day's orders, lots and stop-losses for manual entry in MT5; sends nothing |
+| copy trading allowed between your own challenge accounts; **strictly prohibited involving funded accounts** | one funded account per strategy is the safe reading |
+| reward share 80% (90% after scale-up, 95% with a +30% add-on); first reward 21 days after activation, then every 14 | the funded phase modelled above |
+| "no limits on how many times a trader can withdraw" (lifetime payout article); the 5-reward cap found elsewhere applies to other account types | no cap modelled |
+| withdrawals: USDT/USDC, RiseWorks, bank transfer, card; KYC required; issued within 24 hours | |
+| no reward share during the challenge; a separate 15% challenge reward is paid when scale-up criteria are met (not US traders) | not counted |
+| commission $3 per round lot on major FX (help centre, recent; older reviews say $5) | about 0.25-0.5bp per side by pair, blended ~0.35bp |
+
+**Free trial:** 1-step, 14 days, swap account, EAs banned, MT5 (Match-Trader in
+the US), no withdrawals; reaching +5% earns a 5% discount code for new users.
+Useful for reading spreads and practising the daily routine, not for testing a bot.
+
+### The ticket's two phases
+
+The rules that bind differ by phase. Challenge: no open-risk cap; the 5% daily
+loss binds, so stops are sized to keep an all-stops-hit day under 4.5%, and the
+book runs at 8%. Funded: the 3% open-risk cap binds, so stops fit inside 2.5%.
+
+| challenge / funded vol | EV @ 0.3bp | EV @ 0.5bp |
+|---|---|---|
+| 8% / 8% (stops ~2 daily moves away when funded) | +$1,462 | +$764 |
+| **8% / 6% (ticket defaults; stops ~3 moves away)** | **+$1,026** | **+$457** |
+| 8% / 4.5% (stops ~4 moves away) | +$537 | +$136 |
+
+At the blended ~0.35bp, the realistic figure is **about +$900 per attempt**,
+lower than the earlier +$1,391-1,646, which assumed the same vol in both phases
+and did not account for stops inside the 3% cap.
